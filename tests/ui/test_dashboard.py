@@ -483,7 +483,7 @@ def test_stale_observations_and_fx_failure_are_visible(tmp_path, monkeypatch):
     path = tmp_path / "portfolio.sqlite3"
     initialise(path)
     store = PortfolioStore(path)
-    stale = date.today() - timedelta(days=8)
+    stale = date.today() - timedelta(days=31)
     store.save([BalanceSnapshot("Bank", "Savings", "SGD", Decimal("100"), "asset", stale, "manual")])
     app = AppTest.from_file(str(APP)).run()
     assert not app.metric
@@ -492,5 +492,5 @@ def test_stale_observations_and_fx_failure_are_visible(tmp_path, monkeypatch):
     app.run()
     assert not app.exception
     assert app.metric[0].value == "6,000.00"
-    assert any("Balances more than 7 days old" in item.value for item in app.warning)
-    assert any("FX rates more than 7 days old" in item.value for item in app.warning)
+    assert any("Balances more than 30 days old" in item.value for item in app.warning)
+    assert any("FX rates more than 30 days old" in item.value for item in app.warning)

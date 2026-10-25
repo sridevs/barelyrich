@@ -57,19 +57,19 @@ def test_inr_account_and_converted_values_use_indian_grouping():
     assert row["Net value (INR)"] == "1,23,45,678.90"
 
 
-def test_staleness_threshold_is_strictly_more_than_seven_days():
+def test_staleness_threshold_is_strictly_more_than_thirty_days():
     rows = tuple(account(
         account=str(days), as_of=DAY - timedelta(days=days),
         rate_date=DAY - timedelta(days=days),
-    ) for days in (0, 7, 8))
+    ) for days in (0, 30, 31))
     presenter = PortfolioPresenter(Portfolio(rows, "INR", DAY))
-    assert presenter.stale_accounts() == ("8",)
+    assert presenter.stale_accounts() == ("31",)
     assert presenter.stale_currencies() == ("SGD",)
-    assert presenter.stale_accounts(days=8) == ()
+    assert presenter.stale_accounts(days=31) == ()
 
 
 def test_stale_currencies_ignore_identity_rates_and_missing_rates_and_deduplicate():
-    old = DAY - timedelta(days=8)
+    old = DAY - timedelta(days=31)
     rows = (
         account(currency="INR", rate=Decimal(1), rate_date=old),
         account(currency="USD", rate=None, rate_date=None),
