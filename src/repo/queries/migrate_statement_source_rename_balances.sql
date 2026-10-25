@@ -1,0 +1,1 @@
+ALTER TABLE account_balances_statement_migration RENAME TO account_balances;

@@ -1,0 +1,1 @@
+ALTER TABLE accounts ADD COLUMN product_type TEXT NOT NULL DEFAULT '';

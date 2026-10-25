@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "barelyrich"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.66,<2", "pandas>=2.2,<4", "cryptography>=43,<47",
+    "pydantic>=2.12,<3", "pydantic-ai-slim>=1.107.9,<2",
+    "pycountry>=24.6,<27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "pytest-cov>=6,<8", "watchdog>=6,<7"]
+statements = ["pypdfium2>=4.30,<6", "Pillow>=11,<13"]
+local-model = [
+    "torch>=2.6,<3", "torchvision>=0.21,<1",
+    "transformers>=5.17,<6", "accelerate>=1.1,<2",
+]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"src.repo.queries" = ["*.sql"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "--cov --cov-report=term-missing --cov-report=html --cov-report=xml"
+
+[tool.coverage.run]
+branch = true
+source = ["src", "app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 90
