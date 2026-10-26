@@ -48,6 +48,23 @@ class StatementBatchSession:
     def fail(self, index: int, error: str) -> None:
         self._replace(index, replace(self.items[index], error=error))
 
+    def require_password(self, index: int) -> None:
+        self._replace(index, replace(self.items[index], password_required=True))
+
+    def password_failed(self, index: int, error: str) -> None:
+        self._replace(
+            index,
+            replace(self.items[index], password_required=True, password_error=error),
+        )
+
+    def password_succeeded(self, index: int) -> None:
+        self._replace(
+            index,
+            replace(
+                self.items[index], error="", password_required=False, password_error="",
+            ),
+        )
+
     def mark_saved(self) -> None:
         self._replace(self.index, replace(self.items[self.index], saved=True))
 

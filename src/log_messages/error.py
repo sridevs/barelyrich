@@ -25,7 +25,11 @@ RENDERED_IMAGE_TOO_LARGE = 'Rendered PDF page exceeds the {max_image_megabytes:g
 PDF_OPERATION_FAILED = 'Unable to {operation} this PDF statement.'
 STATEMENT_PAGE_LIMIT = 'Statement extraction supports at most {max_vision_pages} pages.'
 PDF_PILLOW_REQUIRED = 'PDF images require Pillow; install `pip install -e ".[statements]"`.'
-PASSWORD_PROTECTED_PDF = 'This PDF requires an opening password. Password-protected PDFs are not supported.'
+PASSWORD_PROTECTED_PDF = 'This PDF requires an opening password.'
+INCORRECT_STATEMENT_PASSWORD = (
+    'The password was incorrect, or this encrypted PDF could not be opened. '
+    'Check the password and try again.'
+)
 STATEMENT_PDF_TEXT_EXCEEDS_THE_256_000_CHARACTER_LIMIT = 'Statement PDF text exceeds the 256,000-character limit.'
 VISUAL_STATEMENT_PAGE_LIMIT = 'Visual statement extraction supports at most {max_vision_pages} pages. Upload a shorter statement containing all currency balances and its date.'
 STATEMENT_FILE_TOO_LARGE = 'Statement file must be no larger than {max_statement_megabytes:g} MB.'

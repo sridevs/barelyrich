@@ -10,6 +10,7 @@ class EntryServices:
 
     def preview(
         self, filename: str, content: bytes, *, log_model_output: bool,
+        password: str | None = None,
     ) -> StatementExtraction:
         return StatementImportService(
             StatementDocumentReader(prefer_text=True),
@@ -21,5 +22,6 @@ class EntryServices:
                 text_agent=TransformersStatementAgent.from_text_environment(
                     log_model_output=log_model_output,
                 ),
+                password=password,
             ),
-        ).preview(filename, content)
+        ).preview(filename, content, password)

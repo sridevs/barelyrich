@@ -6,16 +6,16 @@ from src.models.statements.statement_page import StatementPage
 
 
 class PdfStatementReader:
-    def read_text(self, content: bytes) -> StatementDocument | None:
-        pages = StatementPdf(content).text()
+    def read_text(self, content: bytes, password: str | None = None) -> StatementDocument | None:
+        pages = StatementPdf(content, password).text()
         if not pages or any(not text.strip() for text in pages):
             return None
         return StatementDocument(tuple(
             StatementPage(number, b"", text) for number, text in enumerate(pages, 1)
         ))
 
-    def read(self, content: bytes) -> StatementDocument:
-        page_images = StatementPdf(content).render()
+    def read(self, content: bytes, password: str | None = None) -> StatementDocument:
+        page_images = StatementPdf(content, password).render()
         return StatementDocument(tuple(
             StatementPage(page_number, image)
             for page_number, image in enumerate(page_images, 1)

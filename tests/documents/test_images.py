@@ -10,7 +10,9 @@ from src.agents.statement_agent import TransformersStatementAgent
 from src.agents.response import StatementParsingError
 from src.service.statements import StatementImportService
 from src.documents.reader import StatementDocumentReader
-from src.documents.images import StatementPdf
+from src.documents.images import (
+    IncorrectStatementPasswordError, StatementPasswordRequiredError, StatementPdf,
+)
 from src.documents import images
 
 try:
@@ -62,15 +64,20 @@ def test_scanned_pdf_is_accepted_without_extracting_text(monkeypatch):
 
 
 def test_renderer_rejects_excessive_pages_and_corrupt_pdf():
-    with pytest.raises(ValueError, match="at most 16 pages"):
-        StatementDocumentReader().read("large.pdf", fictional_pdf(page_count=17))
+    with pytest.raises(ValueError, match="at most 100 pages"):
+        StatementDocumentReader().read("large.pdf", fictional_pdf(page_count=101))
     with pytest.raises(ValueError, match="Unable to render"):
         StatementPdf(b"not a pdf").render()
 
 
-def test_renderer_accepts_sixteen_pages():
-    rendered_images = StatementPdf(fictional_pdf(page_count=16, width=60, height=80)).render()
-    assert len(rendered_images) == 16
+def test_renderer_accepts_one_hundred_pages():
+    rendered_images = StatementPdf(fictional_pdf(page_count=100, width=60, height=80)).render()
+    assert len(rendered_images) == 100
+
+
+def test_text_reader_accepts_one_hundred_pages():
+    pages = StatementPdf(fictional_pdf(page_count=100, width=60, height=80)).text()
+    assert len(pages) == 100
 
 
 def test_renderer_scales_large_page_before_allocating_bitmap():
@@ -120,8 +127,8 @@ def test_missing_text_dependency_has_install_instructions(monkeypatch):
 def test_text_reader_rejects_corrupt_and_oversized_page_counts():
     with pytest.raises(ValueError, match="Unable to read"):
         StatementPdf(b"not a PDF").text()
-    with pytest.raises(ValueError, match="at most 16 pages"):
-        StatementPdf(fictional_pdf(page_count=17)).text()
+    with pytest.raises(ValueError, match="at most 100 pages"):
+        StatementPdf(fictional_pdf(page_count=101)).text()
 
 
 def test_text_reader_closes_native_resources_when_text_limit_is_exceeded(monkeypatch):
@@ -159,6 +166,38 @@ def test_password_protected_pdf_has_explicit_error(monkeypatch):
     with pytest.raises(ValueError, match="requires an opening password"):
         StatementDocumentReader().read("protected.pdf", b"protected PDF")
     protected_document.assert_called_once_with(b"protected PDF", password="")
+
+
+@pytest.mark.parametrize(
+    ("password", "exception"),
+    [
+        (None, StatementPasswordRequiredError),
+        ("wrong password", IncorrectStatementPasswordError),
+    ],
+)
+def test_password_errors_are_actionable_and_never_include_password(
+    monkeypatch, password, exception,
+):
+    pdfium = pytest.importorskip("pypdfium2")
+    error = pdfium.PdfiumError(
+        "Failed to load document", err_code=pdfium.raw.FPDF_ERR_PASSWORD,
+    )
+    monkeypatch.setattr("pypdfium2.PdfDocument", Mock(side_effect=error))
+    with pytest.raises(exception) as raised:
+        StatementPdf(b"protected PDF", password).text()
+    assert "wrong password" not in str(raised.value)
+
+
+def test_password_is_passed_only_to_current_pdfium_open(monkeypatch):
+    pdfium = pytest.importorskip("pypdfium2")
+    document = MagicMock()
+    document.__enter__.return_value = document
+    document.__len__.return_value = 0
+    open_document = Mock(return_value=document)
+    monkeypatch.setattr(pdfium, "PdfDocument", open_document)
+
+    assert StatementPdf(b"protected PDF", "open sesame").text() == ()
+    open_document.assert_called_once_with(b"protected PDF", password="open sesame")
 
 
 def test_missing_pillow_has_install_instructions(monkeypatch):

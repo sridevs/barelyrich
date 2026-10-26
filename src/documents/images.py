@@ -16,16 +16,25 @@ except ImportError:
 _RENDER_LOCK = Lock()
 
 
+class StatementPasswordRequiredError(ValueError):
+    """Raised when opening a statement PDF requires a password."""
+
+
+class IncorrectStatementPasswordError(ValueError):
+    """Raised when a supplied password cannot open a statement PDF."""
+
+
 class StatementPdf:
     """Read bounded text and render page images from an uploaded PDF."""
 
-    __slots__ = ("_content",)
+    __slots__ = ("_content", "_password")
 
-    def __init__(self, content: bytes):
+    def __init__(self, content: bytes, password: str | None = None):
         self._content = content
+        self._password = password
 
     def text(self) -> tuple[str, ...]:
-        with _open_document(self._content, "read") as document:
+        with _open_document(self._content, "read", self._password) as document:
             if len(document) > config.MAX_VISION_PAGES:
                 raise ValueError(
                     error_messages.STATEMENT_PAGE_LIMIT.format(max_vision_pages=config.MAX_VISION_PAGES)
@@ -34,7 +43,7 @@ class StatementPdf:
 
     def render(self) -> tuple[bytes, ...]:
         try:
-            with _open_document(self._content, "render") as document:
+            with _open_document(self._content, "render", self._password) as document:
                 if len(document) > config.MAX_VISION_PAGES:
                     raise ValueError(
                         error_messages.VISUAL_STATEMENT_PAGE_LIMIT.format(max_vision_pages=config.MAX_VISION_PAGES)
@@ -93,15 +102,19 @@ def _require_pdfium(mode: str):
 
 
 @contextmanager
-def _open_document(content: bytes, operation: str):
+def _open_document(content: bytes, operation: str, password: str | None = None):
     pdfium_api = _require_pdfium("text" if operation == "read" else "images")
     try:
-        with _RENDER_LOCK, pdfium_api.PdfDocument(content, password="") as document:
+        with _RENDER_LOCK, pdfium_api.PdfDocument(content, password=password or "") as document:
             yield document
     except pdfium_api.PdfiumError as error:
         if error.err_code == pdfium_api.raw.FPDF_ERR_PASSWORD:
-            raise ValueError(
-                error_messages.PASSWORD_PROTECTED_PDF
+            if password is None:
+                raise StatementPasswordRequiredError(
+                    error_messages.PASSWORD_PROTECTED_PDF
+                ) from error
+            raise IncorrectStatementPasswordError(
+                error_messages.INCORRECT_STATEMENT_PASSWORD
             ) from error
         raise ValueError(error_messages.PDF_OPERATION_FAILED.format(operation=operation)) from error
 

@@ -18,23 +18,25 @@ class StatementDocumentReader:
     def __init__(self, *, prefer_text: bool = False):
         self._prefer_text = prefer_text
 
-    def read(self, file_name: str, content: bytes) -> StatementDocument:
+    def read(
+        self, file_name: str, content: bytes, password: str | None = None,
+    ) -> StatementDocument:
         if len(content) > config.MAX_STATEMENT_BYTES:
             raise ValueError(
                 error_messages.STATEMENT_FILE_TOO_LARGE.format(max_statement_megabytes=config.MAX_STATEMENT_BYTES / 1000000)
             )
         if Path(file_name).suffix.lower() != ".pdf":
             raise ValueError(error_messages.UPLOAD_A_PDF_STATEMENT)
-        return self._read_pdf(content)
+        return self._read_pdf(content, password)
 
-    def _read_pdf(self, content: bytes) -> StatementDocument:
+    def _read_pdf(self, content: bytes, password: str | None) -> StatementDocument:
         reader = PdfStatementReader()
         if self._prefer_text:
             LOGGER.info(info.PDF_TEXT_EXTRACTION)
-            document = reader.read_text(content)
+            document = reader.read_text(content, password)
             if document:
                 LOGGER.info(info.PDF_TEXT_AVAILABLE, len(document.pages))
                 return document
             LOGGER.info(info.PDF_TEXT_MISSING)
         LOGGER.info(info.PDF_IMAGE_PREPARATION)
-        return reader.read(content)
+        return reader.read(content, password)

@@ -42,9 +42,13 @@ hf download Qwen/Qwen3-4B-Instruct-2507 --include "*.safetensors" --include "*.j
 hf download Qwen/Qwen3-VL-8B-Instruct --include "*.safetensors" --include "*.json" --include "*.txt" --include "*.model" --include "*.jinja"
 ```
 
+For password-protected PDFs, the app requests the opening password only during
+that import and clears it after use.
 PDF text is processed first with Qwen3-4B. Scanned pages and incomplete text
 extraction use Qwen3-VL-8B. Models run locally through Transformers; GGUF is
-not supported. The app accepts PDFs up to 10 MB and 16 pages. Allow ample RAM
+not supported. The app accepts PDFs up to 10 MB and 100 pages. Large statements
+may still exceed the 100,000-input-token budget, the model's context capacity,
+or available memory. Allow ample RAM
 (32 GB or more recommended for the default vision model).
 
 | Setting | Purpose |

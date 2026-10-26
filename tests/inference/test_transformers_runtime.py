@@ -542,6 +542,15 @@ def test_processor_import_error_explains_torchvision_requirement(monkeypatch):
     assert load_calls["models"] == []
 
 
+def test_default_input_token_budget_accepts_one_hundred_thousand_tokens():
+    runtime = TransformersRuntime(TransformersRuntimeConfig())
+    assert TransformersRuntimeConfig().max_input_tokens == 100_000
+    runtime._require_input_budget(80_862)
+    runtime._require_input_budget(100_000)
+    with pytest.raises(TransformersRuntimeError, match="100001 tokens.*100000-token limit"):
+        runtime._require_input_budget(100_001)
+
+
 def test_input_token_limit_prevents_generation(monkeypatch):
     _, model, _, _, _ = install_fake_runtime_modules(monkeypatch, input_token_count=4)
     runtime = TransformersRuntime(TransformersRuntimeConfig(
@@ -843,15 +852,23 @@ def test_images_close_and_generation_lock_releases_when_preprocessing_fails(monk
     assert runtime.generate(document, "prompt") == '{"balances":[]}'
 
 
+def test_page_content_accepts_one_hundred_page_images():
+    document = StatementDocument(tuple(
+        StatementPage(page_number, PAGE_IMAGE) for page_number in range(1, 101)
+    ))
+    with page_images.page_content(document, 4_000_000) as content:
+        assert sum(item["type"] == "image" for item in content) == 100
+
+
 def test_runtime_rejects_too_many_visual_pages_before_loading_images(monkeypatch):
     install_fake_runtime_modules(monkeypatch)
     runtime = TransformersRuntime(TransformersRuntimeConfig(device="cpu"))
     document = StatementDocument(tuple(
         StatementPage(page_number, b"image bytes")
-        for page_number in range(1, 18)
+        for page_number in range(1, 102)
     ))
 
-    with pytest.raises(TransformersRuntimeError, match="at most 16 page images"):
+    with pytest.raises(TransformersRuntimeError, match="at most 100 page images"):
         runtime.generate(document, "prompt")
 
 

@@ -2,11 +2,15 @@ import streamlit as st
 from streamlit.typing import UploadedFile
 
 from src import config
+from src.documents.images import (
+    IncorrectStatementPasswordError, StatementPasswordRequiredError,
+)
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.service.entry import EntryServices
 from src.service.portfolio import PortfolioActions
 from src.ui.feedback import show_saved
 from src.ui import ui_text
+from src.ui.models.statement_batch_item import StatementBatchItem
 from src.ui.state import StatementReviewSession
 from src.ui.statement_batch import StatementBatchSession
 from src.ui.statement_review import render_statement_review
@@ -41,7 +45,9 @@ def render_statement_import(actions: PortfolioActions, services: EntryServices) 
         _handle_statement_extraction(uploads, kind, log_model_output, services, batch)
         if batch.items:
             _render_batch_navigation(batch)
-            _render_current_statement(batch, actions)
+            _render_current_statement(
+                batch, actions, uploads, kind, log_model_output, services,
+            )
             _render_batch_save(batch, actions)
 
 
@@ -54,17 +60,78 @@ def _invalidate_changed_batch(
         st.warning(ui_text.BATCH_CHANGED)
 
 
-def _render_current_statement(batch: StatementBatchSession, actions: PortfolioActions) -> None:
+def _render_current_statement(
+    batch: StatementBatchSession, actions: PortfolioActions,
+    uploads: list[UploadedFile], kind: str, log_model_output: bool,
+    services: EntryServices,
+) -> None:
     item = batch.items[batch.index]
     if item.error:
         st.error(item.error)
-    elif item.saved:
+        return
+    if item.saved:
         st.info(ui_text.STATEMENT_SAVED)
-    else:
-        session = batch.review_session(batch.index)
-        preview = session.preview
-        if preview:
-            render_statement_review(preview, actions, session, batch)
+        return
+    _render_password_if_needed(
+        item, batch, uploads, kind, log_model_output, services,
+    )
+    session = batch.review_session(batch.index)
+    preview = session.preview
+    if preview:
+        render_statement_review(preview, actions, session, batch)
+
+
+def _render_password_if_needed(
+    item: StatementBatchItem, batch: StatementBatchSession, uploads: list[UploadedFile],
+    kind: str, log_model_output: bool, services: EntryServices,
+) -> None:
+    if not item.password_required:
+        return
+    st.info(ui_text.ENTER_STATEMENT_PASSWORD)
+    if item.password_error:
+        st.error(item.password_error)
+    _render_password_form(batch, uploads[batch.index], kind, log_model_output, services)
+
+
+def _render_password_form(
+    batch: StatementBatchSession, upload: UploadedFile, kind: str,
+    log_model_output: bool, services: EntryServices,
+) -> None:
+    password_key = f"statement_password_{batch.index}_{batch.review_session(batch.index).upload_revision}"
+    with st.form(f"statement_password_form_{batch.index}"):
+        st.text_input(
+            ui_text.STATEMENT_PASSWORD, type="password", key=password_key,
+            help=ui_text.STATEMENT_PASSWORD_HELP,
+        )
+        st.form_submit_button(
+            ui_text.SUBMIT_STATEMENT_PASSWORD,
+            type="primary",
+            on_click=_retry_protected_statement,
+            args=(
+                batch, batch.index, upload.name, upload.getvalue(), kind,
+                log_model_output, services, password_key,
+            ),
+        )
+
+
+def _retry_protected_statement(
+    batch: StatementBatchSession, index: int, filename: str, content: bytes,
+    kind: str, log_model_output: bool, services: EntryServices, password_key: str,
+) -> None:
+    password = st.session_state.pop(password_key, "")
+    try:
+        if not password:
+            batch.password_failed(index, ui_text.ENTER_STATEMENT_PASSWORD)
+        else:
+            extraction = services.preview(
+                filename, content, log_model_output=log_model_output, password=password,
+            )
+            batch.review_session(index).start(content, kind, extraction)
+            batch.password_succeeded(index)
+    except IncorrectStatementPasswordError as error:
+        batch.password_failed(index, str(error))
+    except ValueError as error:
+        batch.fail(index, str(error))
 
 
 def _render_batch_navigation(batch: StatementBatchSession) -> None:
@@ -93,7 +160,7 @@ def _render_navigation_buttons(batch: StatementBatchSession) -> None:
 
 
 def _render_batch_save(batch: StatementBatchSession, actions: PortfolioActions) -> None:
-    if len(batch.items) < 2:
+    if len(batch.items) < 2 or any(item.password_required for item in batch.items):
         return
     with st.container(border=True):
         _render_batch_save_guidance(batch)
@@ -178,6 +245,8 @@ def _handle_statement_extraction(
         try:
             with st.spinner(ui_text.parsing_statement(index + 1, len(uploads), upload.name)):
                 _extract_statement(upload, index, kind, log_model_output, services, batch)
+        except StatementPasswordRequiredError:
+            batch.require_password(index)
         except ValueError as error:
             batch.fail(index, str(error))
 

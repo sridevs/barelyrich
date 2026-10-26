@@ -35,6 +35,10 @@ DEBUG_OUTPUT_HELP = (
     "Redact names, account numbers, balances and other private details before sharing."
 )
 EXTRACT_BALANCES = "Extract balances"
+STATEMENT_PASSWORD = "PDF opening password"
+STATEMENT_PASSWORD_HELP = "Used only to open this statement for the current import."
+SUBMIT_STATEMENT_PASSWORD = "Unlock and extract"
+ENTER_STATEMENT_PASSWORD = "Enter the PDF opening password to continue."
 
 # Account review.
 REVIEW_BALANCES = "Review balances"

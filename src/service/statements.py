@@ -16,7 +16,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 class StatementReader(Protocol):
-    def read(self, file_name: str, content: bytes) -> StatementDocument: ...
+    def read(
+        self, file_name: str, content: bytes, password: str | None = None,
+    ) -> StatementDocument: ...
 
 
 class StatementAgent(Protocol):
@@ -37,9 +39,14 @@ class StatementImportService:
         self,
         file_name: str,
         content: bytes,
+        password: str | None = None,
     ) -> StatementExtraction:
         started_at = perf_counter()
-        document = self._reader.read(file_name, content)
+        document = (
+            self._reader.read(file_name, content)
+            if password is None else
+            self._reader.read(file_name, content, password)
+        )
         LOGGER.info(
             info.DOCUMENT_PROCESSED,
             perf_counter() - started_at, len(document.pages),

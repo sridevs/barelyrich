@@ -9,6 +9,9 @@ from streamlit.testing.v1 import AppTest
 from src.agents.statement_agent import TransformersStatementAgent
 from tests.statement_fixtures import statement_extraction
 from src.documents.images import StatementPdf
+from src.documents.images import (
+    IncorrectStatementPasswordError, StatementPasswordRequiredError,
+)
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.models.portfolio.exchange_rate_observation import ExchangeRateObservation
 from src.models.portfolio.institution import Institution
@@ -171,6 +174,47 @@ def test_batch_failure_and_upload_changes_do_not_leak_review(tmp_path, monkeypat
     assert not app.exception
     assert not any(button.label == "Save balances" for button in app.button)
     assert not PortfolioStore(tmp_path / "portfolio.sqlite3").balance_history(date.today())
+
+
+def test_protected_pdf_password_is_requested_only_after_detection_and_cleared(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setenv("WT_DATA_DIR", str(tmp_path))
+    attempted_passwords = []
+
+    def preview(services, filename, content, *, log_model_output, password=None):
+        if password is None:
+            raise StatementPasswordRequiredError("This PDF requires an opening password.")
+        attempted_passwords.append(password)
+        if password != "correct horse":
+            raise IncorrectStatementPasswordError(
+                "The password was incorrect, or this encrypted PDF could not be opened."
+            )
+        return statement_extraction()
+
+    monkeypatch.setattr(EntryServices, "preview", preview)
+    app = AppTest.from_file(str(APP)).run()
+    assert not any(item.label == "PDF opening password" for item in app.text_input)
+    app.file_uploader[0].set_value([
+        ("protected.pdf", b"protected PDF", "application/pdf"),
+    ]).run()
+    by_label(app.button, "Extract balances").click().run()
+    assert not app.exception
+    password_input = by_label(app.text_input, "PDF opening password")
+
+    password_input.set_value("incorrect")
+    by_label(app.button, "Unlock and extract").click().run()
+    assert not app.exception
+    assert "password was incorrect" in app.error[0].value
+    assert "incorrect" not in app.session_state.values()
+    assert by_label(app.text_input, "PDF opening password").value == ""
+
+    by_label(app.text_input, "PDF opening password").set_value("correct horse")
+    by_label(app.button, "Unlock and extract").click().run()
+    assert not app.exception
+    assert attempted_passwords == ["incorrect", "correct horse"]
+    assert "correct horse" not in app.session_state.values()
+    assert any(item.label == "Account alias" for item in app.text_input)
 
 
 def test_save_all_uses_edits_resets_confirmation_and_skips_failed_files(tmp_path, monkeypatch):
