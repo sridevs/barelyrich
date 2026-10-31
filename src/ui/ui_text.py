@@ -5,6 +5,12 @@ from datetime import date
 
 from src import config
 
+CONFLICTING_SUMMARIES = (
+    "Conflicting balance summaries need review. Use Edit extracted rows to keep one correct "
+    "closing balance per currency/date before saving."
+)
+MISSING_ACCOUNT_TYPE = "Account type is missing or conflicting. Check and edit the account type below."
+
 
 # Workflow navigation and statement uploads.
 DATA_ENTRY = "Data entry"
@@ -12,7 +18,7 @@ PORTFOLIO_OVERVIEW = "Portfolio overview"
 PARSE_STATEMENT = "Parse statement"
 MANUAL_VALUATION = "Manual valuation"
 ACCOUNT_BALANCES = "Account balances"
-STATEMENT_DESCRIPTION = "Extract currency balances from a local PDF statement."
+STATEMENT_DESCRIPTION = "Extract transactions and dated balances from a local PDF or CSV statement."
 OTHER_ASSETS = "Other assets and debts"
 VALUATION_DESCRIPTION = "Record gold, property or other dated valuations."
 SELECTED = "Selected"
@@ -23,15 +29,23 @@ REVIEW_STATEMENTS = "Review statements"
 BACK = "Back"
 NEXT = "Next"
 SAVE_ALL_BALANCES = "Save all balances"
-BATCH_CONFIRMATION = "I reviewed all remaining parsed statements and want to save their balances."
+BATCH_CONFIRMATION = "I reviewed all remaining parsed statements and want to save their transactions and balances."
 PARSE_WITH_AI = "Parse with AI"
+OLLAMA_MODEL = "Ollama model"
+OLLAMA_NO_MODELS = "No local completion models supporting thinking off found. Run ollama pull qwen3:4b-instruct."
+OLLAMA_MODEL_HELP = (
+    "Choose an installed local model that supports thinking off. "
+    "Only extracted statement text is sent. Ollama runs at 127.0.0.1:11434 with "
+    "thinking disabled. Scanned PDFs require OCR before upload. "
+    "Select Extract balances to run a new preview."
+)
 ASSET_TYPE = "Asset type"
 ASSET_TYPE_HELP = "Choose liability for amounts owed, such as loans or card balances."
 DEBUG_OUTPUT = "Log raw model output for debugging (contains sensitive data)"
 DEBUG_OUTPUT_HELP = (
     "Writes the model response to the terminal running Streamlit before validation, "
     "and the failure reason if validation fails. "
-    "Does not log the PDF file or images. "
+    "Does not log the source file. "
     "Redact names, account numbers, balances and other private details before sharing."
 )
 EXTRACT_BALANCES = "Extract balances"
@@ -39,12 +53,25 @@ STATEMENT_PASSWORD = "PDF opening password"
 STATEMENT_PASSWORD_HELP = "Used only to open this statement for the current import."
 SUBMIT_STATEMENT_PASSWORD = "Unlock and extract"
 ENTER_STATEMENT_PASSWORD = "Enter the PDF opening password to continue."
+STATEMENT_PROCESSING_HELP = (
+    "Processing locally: reading the statement, loading the model and extracting transactions. "
+    "This can take several minutes per attempt. Keep this page open; nothing is saved yet."
+)
+LIVE_OUTPUT_HELP = (
+    "Live model output, not internal reasoning. Contains sensitive statement data; "
+    "shown only in this session, not logged unless raw-output debugging is enabled. "
+    "The latest 16,000 characters are shown. Partial output is unvalidated and is never saved."
+)
+WAITING_FOR_OUTPUT = "Waiting for the first generated token (model prompt processing)..."
+EXTRACTION_READY = "Extraction complete; preview ready for review"
+EXTRACTION_FAILED = "Extraction stopped; partial output was not accepted"
 
 # Account review.
 REVIEW_BALANCES = "Review balances"
 REVIEW_WARNING = (
     "AI values are not independently verified. Check the institution, account numbers, "
-    "balances and dates against your PDF, then approve each account below."
+    "every transaction, withdrawal, deposit, running balance and date against your PDF, "
+    "then approve each account below."
 )
 ACCOUNT_UPDATES = "How account updates work"
 ACCOUNT_UPDATES_HELP = (
@@ -59,16 +86,17 @@ INSTITUTION_HELP = (
 )
 ACCOUNT_TYPE = "Account type"
 ACCOUNT_TYPE_HELP = "AI suggestion, not verified. Correct it or enter your own account type."
-ACCOUNT_ALIAS = "Account alias"
+ACCOUNT_ALIAS = "Account name"
+STOP_EXTRACTION = "Stop extraction"
+EXTRACTION_CANCELLED = "Extraction stopped. No partial output was saved. You can extract again."
 ACCOUNT_ALIAS_HELP = (
     "Suggested from institution and type. Editable display label; account numbers identify updates."
 )
 SAVED = "Saved"
-ACCOUNT_CONFIRMATION = "I reviewed every account and currency balance and want to save them."
+ACCOUNT_CONFIRMATION = "I reviewed every account, transaction and currency balance and want to save them."
 SAVE_BALANCES = "Save balances"
-AI_INTERPRETATION = "AI interpretation"
-BALANCES_ALT = "Extracted currency balances for this account"
-CLASSIFICATIONS_ALT = "Model-reported balance and date classifications"
+EDITABLE_TRANSACTIONS_ALT = "Editable statement transactions"
+BALANCES_ALT = "Extracted dates, transactions, withdrawals, deposits and balances for this account"
 
 # Manual valuations.
 SAVE_VALUATION = "Save valuation"
@@ -124,27 +152,32 @@ CURRENCY = "Currency"
 BALANCE_DATE = "Balance date"
 ACCOUNT_NUMBER = "Account number"
 BALANCE = "Balance"
+WITHDRAWAL = "Withdrawal"
+DEPOSIT = "Deposit"
+DESCRIPTION = "Description"
 SOURCE = "Source"
 RECORDED_AT = "Recorded / fetched (UTC)"
 FX_DATE = "Oldest FX date used"
-BALANCE_TYPE = "Balance type"
-SCOPE = "Scope"
-DATE_TYPE = "Date type"
 DATE = "Date"
 YEAR = "Year"
 
 
+def row_count(count: int) -> str:
+    return f"{count:,} row{'' if count == 1 else 's'}"
+
+
 def statement_guidance() -> str:
     return (
-        f"Upload PDFs (up to {config.MAX_VISION_PAGES} pages each) to extract balances for "
-        "all identified accounts and currencies, not transactions. "
+        f"Upload text-based PDFs (up to {config.MAX_STATEMENT_PAGES} pages each) or transaction CSV files "
+        "to extract transactions and "
+        "dated balances for all identified accounts and currencies. "
         "AI runs locally; your statement stays on this computer. "
-        "Review each account and every balance before saving."
+        "Each transaction needs its printed running balance. Review all rows before saving."
     )
 
 
 def statement_upload_label() -> str:
-    return f"Statement files (PDF, up to {config.MAX_STATEMENT_BYTES / 1_000_000:g} MB each)"
+    return f"Statement files (PDF or CSV, up to {config.MAX_STATEMENT_BYTES / 1_000_000:g} MB each)"
 
 
 def batch_status(saved: int, pending: int, failed: int) -> str:
@@ -163,7 +196,7 @@ def batch_save_guidance(pending: int) -> str:
 
 
 def batch_saved(count: int, pending: int) -> str:
-    return f"Saved {count} currency balances from {pending} statements."
+    return f"Saved {count} transaction/balance rows from {pending} statements."
 
 
 def parsing_statement(position: int, total: int, name: str) -> str:
@@ -178,8 +211,14 @@ def statement_date(as_of: date) -> str:
     return f"Statement date: {as_of.isoformat()}"
 
 
+def statement_dates(dates: Iterable[date]) -> str:
+    dates = tuple(dates)
+    start, end = min(dates), max(dates)
+    return statement_date(start) if start == end else f"Statement dates: {start} to {end}"
+
+
 def account_confirmation(single: bool, index: int) -> str:
-    return ACCOUNT_CONFIRMATION if single else f"I reviewed account {index} and want to save its balances."
+    return ACCOUNT_CONFIRMATION if single else f"I reviewed account {index} and want to save its transactions and balances."
 
 
 def save_account_label(single: bool, index: int) -> str:
@@ -188,8 +227,8 @@ def save_account_label(single: bool, index: int) -> str:
 
 def account_saved(count: int, single: bool, index: int) -> str:
     return (
-        f"Saved {count} statement currency balances." if single else
-        f"Saved {count} balances for account {index}."
+        f"Saved {count} statement transaction/balance rows." if single else
+        f"Saved {count} transaction/balance rows for account {index}."
     )
 
 
@@ -255,3 +294,20 @@ def fx_refreshed(published_dates: str) -> str:
 
 def history_hover(as_of: date, currency: str, amount: str | None) -> str:
     return f"{as_of:%d %b %Y} | {currency} {amount}"
+EDIT_EXTRACTED_ROWS = "Edit extracted rows"
+APPLY_CORRECTIONS = "Apply corrections"
+CANCEL_CORRECTIONS = "Cancel corrections"
+REVIEW_SORT_HELP = (
+    "Streamlit disables header sorting while adding and deleting rows is enabled. "
+    "Saving sorts by date and preserves row order within each day, which affects "
+    "the day's final balance. Check same-day transaction order against the PDF."
+)
+STATEMENT_EDIT_HELP = (
+    "Click a cell to correct dates (YYYY-MM-DD), currency, amounts or descriptions. "
+    "Use the blank row at the bottom to add a missing transaction; "
+    "select rows and use the trash icon to delete them. "
+    "Keep at least one row per account. "
+    "Use decimal amounts without thousands separators; leave missing movements blank. "
+    "Corrections are manual; no balance calculations or withdrawal/deposit swaps are applied. "
+    "Enter a balance for every row before applying corrections."
+)

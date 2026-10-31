@@ -1,9 +1,9 @@
-from datetime import date
 from copy import deepcopy
+from datetime import date
 from decimal import Decimal
 
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 
 from src.agents.output import BalanceOutput, StatementOutput
 from src.agents.response import StatementResponseParser
@@ -11,13 +11,137 @@ from src.agents.response import StatementResponseParser
 
 def balance_data():
     return {
+        "description": "",
+        "withdrawal": None, "deposit": "1.00",
         "balance": "10.25",
         "currency": "SGD",
         "as_of": date.today().isoformat(),
-        "balance_role": "closing_balance",
-        "account_scope": "single_account",
-        "date_role": "statement_date",
     }
+
+
+def currency_section(number, currency, account_type=None):
+    return {
+        "number": number, "account_type": account_type,
+        "balances": [{**balance_data(), "currency": currency}],
+    }
+
+
+@pytest.mark.parametrize("currency_type", [None, "", "EUR", "currency_breakdown",
+                                          "current_and_savings_account"])
+def test_currency_sections_merge_before_domain_validation(currency_type, caplog):
+    with caplog.at_level("INFO"):
+        extraction = StatementOutput.model_validate({
+            "institution": {"name": "Example Bank"},
+            "accounts": [
+                currency_section("123-456", "SGD", "Current and Savings Account"),
+                currency_section("123456", "EUR", currency_type),
+            ],
+        }).to_domain()
+    assert len(extraction.accounts) == 1
+    account = extraction.accounts[0]
+    assert account.number == "123-456"
+    assert account.account_type == "Current and Savings Account"
+    assert [row.currency for row in account.balances] == ["SGD", "EUR"]
+    assert "merged currency account sections" in caplog.text
+    assert [row.currency for row in account.to_snapshots("Example Bank", "Savings", "asset")] == [
+        "SGD", "EUR",
+    ]
+
+
+def test_currency_section_first_uses_later_product_type_and_keeps_distinct_accounts():
+    extraction = StatementOutput.model_validate({
+        "institution": {"name": "Example Bank"},
+        "accounts": [
+            currency_section("1234", "EUR", "currency_breakdown"),
+            currency_section("5678", "USD", "Checking"),
+            currency_section("1234", "SGD", "Savings"),
+        ],
+    }).to_domain()
+    assert [item.number for item in extraction.accounts] == ["1234", "5678"]
+    assert extraction.accounts[0].account_type == "Savings"
+    assert [row.currency for row in extraction.accounts[0].balances] == ["EUR", "SGD"]
+
+
+@pytest.mark.parametrize(("number", "product", "message"), [
+    ("N/A", "EUR", "digits"),
+])
+def test_invalid_or_conflicting_sections_still_fail(number, product, message):
+    output = StatementOutput.model_validate({
+        "institution": {"name": "Example Bank"},
+        "accounts": [
+            currency_section("1234", "SGD", "Savings"),
+            currency_section(number, "EUR", product),
+        ],
+    })
+    with pytest.raises(ValueError, match=message):
+        output.to_domain()
+
+
+def test_conflicting_account_types_are_cleared_for_review(caplog):
+    with caplog.at_level("WARNING"):
+        extraction = StatementOutput.model_validate({
+            "institution": {"name": "Example Bank"},
+            "accounts": [
+                currency_section("1234", "SGD", "Savings"),
+                currency_section("1234", "EUR", "Loan"),
+                currency_section("1234", "USD", "Savings"),
+            ],
+        }).to_domain()
+    assert extraction.accounts[0].account_type == ""
+    assert len(extraction.balances) == 3
+    assert "conflicting account types" in caplog.text
+
+
+def test_merging_preserves_repeated_transaction_rows_and_is_repeatable():
+    section = currency_section("1234", "SGD", "Savings")
+    section["balances"][0].update(withdrawal="1.00", description="Printed transaction")
+    output = StatementOutput.model_validate({
+        "institution": {"name": "Example Bank"},
+        "accounts": [section, deepcopy(section)],
+    })
+    extraction = output.to_domain()
+    assert len(extraction.balances) == 2
+    assert extraction.balances[0] == extraction.balances[1]
+    assert output.to_domain() == extraction
+    assert len(output.accounts) == 2
+
+
+@pytest.mark.parametrize("field", ["withdrawal", "deposit", "description"])
+def test_movement_keys_are_required_even_when_other_movement_is_present(field):
+    fields = balance_data()
+    fields.update(withdrawal="0.00", deposit="5.00")
+    del fields[field]
+    with pytest.raises(ValidationError) as failure:
+        BalanceOutput.model_validate(fields)
+    assert any(item["loc"] == (field,) and item["type"] == "missing"
+               for item in failure.value.errors())
+
+
+@pytest.mark.parametrize("withdrawal,deposit", [
+    ("0", None), (None, "0.00"), ("0.00", "0"),
+    ("5.00", None), (None, "5.00"), ("5.00", "2.00"),
+])
+def test_required_movements_accept_null_zero_and_printed_amounts(withdrawal, deposit):
+    output = BalanceOutput.model_validate({
+        **balance_data(), "withdrawal": withdrawal, "deposit": deposit,
+    })
+    assert output.withdrawal == withdrawal
+    assert output.deposit == deposit
+    row = output.to_domain()
+    assert row.withdrawal == (None if withdrawal is None else Decimal(withdrawal))
+    assert row.deposit == (None if deposit is None else Decimal(deposit))
+
+
+@pytest.mark.parametrize("description", ["", "Interest credit", "x" * 2000])
+def test_required_description_preserves_text(description):
+    output = BalanceOutput.model_validate({**balance_data(), "description": description})
+    assert output.to_domain().description == description
+
+
+@pytest.mark.parametrize("description", [None, 123, "x" * 2001])
+def test_required_description_rejects_null_wrong_types_and_oversized_text(description):
+    with pytest.raises(ValidationError):
+        BalanceOutput.model_validate({**balance_data(), "description": description})
 
 
 @pytest.mark.parametrize("account_type", [None, "", "  ", "Fixed deposit", "Custom bank product"])
@@ -74,7 +198,7 @@ def test_typed_output_preserves_extracted_values_for_review_without_evidence():
     })
     extraction = output.to_domain()
     assert extraction.balances[0].balance == Decimal("10.25")
-    assert extraction.institution is not None
+    assert extraction.institution
     assert extraction.institution.name == "DBS"
     fields = balance_data()
     fields["balance"] = "999"
@@ -122,30 +246,30 @@ def statement_output(balances):
     })
 
 
-def test_repeated_financial_values_are_collapsed_for_review(caplog):
+def test_repeated_transaction_values_are_preserved_for_review(caplog):
     original = balance_data()
     repeated = deepcopy(original)
     repeated["balance"] = "10.250"
     with caplog.at_level("INFO"):
         extraction = statement_output([original, repeated]).to_domain()
-    assert len(extraction.balances) == 1
+    assert len(extraction.balances) == 2
     assert extraction.balances[0].balance == Decimal("10.25")
-    assert "repeated equivalent balance rows collapsed" in caplog.text
+    assert "repeated equivalent balance rows collapsed" not in caplog.text
     assert "10.250" not in caplog.text
     assert "Account 1234" not in caplog.text
 
 
 @pytest.mark.parametrize("field,value", [
-    ("balance", "20.50"), ("as_of", "2020-01-01"),
-    ("balance_role", "opening_balance"), ("account_scope", "aggregate"),
-    ("date_role", "period_end"),
+    ("balance", "20.50"),
 ])
 def test_distinct_same_currency_rows_are_never_silently_collapsed(field, value):
     original = balance_data()
     distinct = deepcopy(original)
     distinct[field] = value
-    with pytest.raises(ValueError, match="same currency"):
-        statement_output([original, distinct]).to_domain()
+    extraction = statement_output([original, distinct]).to_domain()
+    assert len(extraction.balances) == 2
+    assert not extraction.accounts[0].has_conflicting_summaries
+    assert len(extraction.to_snapshots("Example", "Savings", "asset")) == 2
 
 
 def test_different_currencies_are_not_collapsed():

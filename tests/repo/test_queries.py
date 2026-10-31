@@ -1,16 +1,15 @@
 import ast
-from importlib.resources import files
-from pathlib import Path
 import re
 import sqlite3
 import tomllib
+from importlib.resources import files
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from src.repo import queries
 from src.repo.db import SCHEMA
-
 
 PROJECT = Path(__file__).resolve().parents[2]
 RESOURCE_NAMES = sorted(

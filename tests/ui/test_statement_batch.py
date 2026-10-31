@@ -1,5 +1,21 @@
-from tests.statement_fixtures import statement_extraction
 from src.ui.statement_batch import StatementBatchSession
+from tests.statement_fixtures import statement_extraction
+
+
+def test_cancel_preserves_completed_reviews_and_reset_clears_passwords():
+    state = {}
+    batch = StatementBatchSession(state)
+    batch.begin([("one.pdf", b"one"), ("two.pdf", b"two")], "asset")
+    batch.review_session(0).start(b"one", "asset", statement_extraction())
+    state["statement_password_1_0"] = "test-password"
+    batch.cancel_extraction("Stopped")
+    assert not batch.items[0].error
+    assert batch.items[1].error == "Stopped"
+    assert batch.pending_indices() == (0,)
+    batch.finish()
+    assert not batch.items
+    assert not any(key.startswith("statement_password") for key in state)
+    assert not any(key.endswith("statement_preview") for key in state)
 
 
 def test_batch_navigation_is_bounded_and_each_review_is_independent():
@@ -16,7 +32,7 @@ def test_batch_navigation_is_bounded_and_each_review_is_independent():
     assert not batch.matches([("first.pdf", b"changed"), files[1]], "asset")
     first = batch.review_session(0).preview
     second = batch.review_session(1).preview
-    assert first is not None and second is not None
+    assert first and second
     assert batch.review_session(0).alias_key(first) != batch.review_session(1).alias_key(second)
     batch.move(-1)
     assert batch.index == 0
@@ -58,7 +74,7 @@ def test_pending_snapshots_use_edits_skip_saved_and_failed_and_reset_confirmatio
     batch.fail(2, "Invalid PDF")
     original = batch.confirmation_key(batch.pending_snapshots())
     review = batch.review_session(0).preview
-    assert review is not None
+    assert review
     state[batch.review_session(0).alias_key(review)] = "Edited account"
     state[batch.institution_key(0, review)] = "Edited Bank"
     snapshots = batch.pending_snapshots()

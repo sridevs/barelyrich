@@ -3,16 +3,15 @@
 
 from pydantic import ValidationError
 
-from src.log_messages import error as error_messages
 from src.agents.output import StatementOutput
 from src.config import MAX_RESPONSE_BYTES
+from src.log_messages import error as error_messages
 from src.models.statements.statement_document import StatementDocument
 from src.models.statements.statement_extraction import StatementExtraction
 from src.models.text import is_missing_text
 
-
 STATEMENT_RESPONSE_SCHEMA = StatementOutput.model_json_schema()
-MAX_OUTPUT_CORRECTIONS = 3
+MAX_OUTPUT_CORRECTIONS = 1
 DOMAIN_RETRY_FEEDBACK = error_messages.DOMAIN_RETRY_FEEDBACK
 
 

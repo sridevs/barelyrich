@@ -1,9 +1,10 @@
 """Packaged SQL statements shared by SQLite adapters."""
 
 
+import re
 from functools import lru_cache
 from importlib.resources import files
-import re
+
 from src.log_messages import error as error_messages
 
 

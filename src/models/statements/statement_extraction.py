@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-
 from dataclasses import dataclass
+
 from src.log_messages import error as error_messages
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.models.portfolio.validation import account_number
@@ -25,8 +25,8 @@ class StatementExtraction:
         numbers = [account_number(item.number) for item in self.accounts]
         if len(numbers) != len(set(numbers)):
             raise ValueError(error_messages.STATEMENT_OUTPUT_CONTAINS_A_REPEATED_ACCOUNT_NUMBER)
-        if sum(len(item.balances) for item in self.accounts) > 30:
-            raise ValueError(error_messages.A_STATEMENT_MUST_CONTAIN_AT_MOST_30_CURRENCY_BALANCES)
+        if sum(len(item.balances) for item in self.accounts) > 10000:
+            raise ValueError(error_messages.STATEMENT_TRANSACTION_LIMIT)
 
     @property
     def balances(self) -> tuple[StatementBalance, ...]:

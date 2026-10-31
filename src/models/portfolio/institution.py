@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-
 from dataclasses import dataclass
+
 from src.log_messages import error as error_messages
-from src.models.portfolio.validation import country_code
-from src.models.portfolio.validation import institution_name
+from src.models.portfolio.validation import country_code, institution_name
 
 
 @dataclass(frozen=True)

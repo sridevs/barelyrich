@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-
-from datetime import date
-from decimal import Decimal, InvalidOperation
 import re
 import unicodedata
+from datetime import date
+from decimal import Decimal, InvalidOperation
+
 from src.log_messages import error as error_messages
 
 
@@ -29,6 +29,24 @@ def decimal_value(value: str | Decimal, label: str) -> Decimal:
     if result.as_tuple().exponent < -8:
         raise ValueError(error_messages.DECIMAL_PRECISION_LIMIT.format(label=label))
     return result
+
+
+def transaction_movements(withdrawal: Decimal | None, deposit: Decimal | None) -> bool:
+    movements = (withdrawal, deposit)
+    for amount in movements:
+        if amount is not None:
+            decimal_value(amount, "Transaction amount")
+            if not isinstance(amount, Decimal) or amount < 0:
+                raise ValueError(error_messages.INVALID_TRANSACTION_MOVEMENT)
+    present = any(amount is not None for amount in movements)
+    return present
+
+
+def transaction_metadata(description: str, row_number: int, is_transaction: bool) -> None:
+    if not isinstance(description, str) or len(description) > 2000:
+        raise ValueError(error_messages.INVALID_TRANSACTION_DESCRIPTION)
+    if type(row_number) is not int or (row_number < 1 if is_transaction else row_number != 0):
+        raise ValueError(error_messages.INVALID_TRANSACTION_ORDER)
 
 
 def country_code(value: str) -> str:

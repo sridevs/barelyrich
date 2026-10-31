@@ -3,12 +3,12 @@ from datetime import date
 import streamlit as st
 
 from src import config
+from src.models.currencies import ISO_CURRENCY_CODES
 from src.models.entry.manual_balance import ManualBalance
 from src.models.entry.validation import required_text
-from src.models.currencies import ISO_CURRENCY_CODES
 from src.service.portfolio import PortfolioActions
-from src.ui.feedback import show_saved
 from src.ui import ui_text
+from src.ui.feedback import show_saved
 
 
 def render_manual_valuation(actions: PortfolioActions) -> None:
@@ -16,7 +16,7 @@ def render_manual_valuation(actions: PortfolioActions) -> None:
     with st.form("manual_valuation"):
         group, name, kind = _render_identity_inputs()
         currency, amount, as_of = _render_value_inputs()
-        save = st.form_submit_button(ui_text.SAVE_VALUATION, key="save_valuation")
+        save = st.form_submit_button(ui_text.SAVE_VALUATION, type="primary", key="save_valuation")
     if save:
         _save_valuation(actions, group, name, kind, currency, amount, as_of)
 

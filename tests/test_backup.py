@@ -1,12 +1,33 @@
 import hashlib
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+
 from src import backup
-from src.backup import create_backup, restore_backup, key_for
+from src.backup import create_backup, key_for, restore_backup
 from src.repo.db import initialise
+
+
+@pytest.fixture
+def encrypted(tmp_path, db_path):
+    encrypted = tmp_path / "backup.enc"
+    create_backup(db_path, encrypted, "test passphrase")
+    return encrypted
+
+
+@pytest.fixture
+def destination(tmp_path):
+    destination = tmp_path / "existing.db"
+    destination.write_bytes(b"original")
+    return destination
+
+
+def assert_preserved(destination):
+    assert destination.read_bytes() == b"original"
+    assert not destination.with_suffix(".db.tmp").exists()
+
 
 def test_round_trip(tmp_path):
     src, enc, dest = tmp_path/"src.db", tmp_path/"backup.enc", tmp_path/"restored.db"
@@ -50,26 +71,17 @@ def test_invalid_backup_format_preserves_destination(tmp_path, blob: bytes):
     assert destination.read_bytes() == b"existing contents"
 
 
-def test_decrypted_non_database_is_rejected_and_temporary_file_is_cleaned(tmp_path):
+def test_decrypted_non_database_is_rejected_and_temporary_file_is_cleaned(tmp_path, destination):
     source = tmp_path / "not-a-database.db"
     source.write_bytes(b"not a sqlite database")
     encrypted = tmp_path / "backup.enc"
-    destination = tmp_path / "existing.db"
-    destination.write_bytes(b"original")
     create_backup(source, encrypted, "test passphrase")
     with pytest.raises(sqlite3.DatabaseError):
         restore_backup(encrypted, destination, "test passphrase")
-    assert destination.read_bytes() == b"original"
-    assert not destination.with_suffix(".db.tmp").exists()
+    assert_preserved(destination)
 
 
-def test_failed_integrity_check_preserves_destination(tmp_path, monkeypatch):
-    source = tmp_path / "source.db"
-    initialise(source)
-    encrypted = tmp_path / "backup.enc"
-    create_backup(source, encrypted, "test passphrase")
-    destination = tmp_path / "existing.db"
-    destination.write_bytes(b"original")
+def test_failed_integrity_check_preserves_destination(monkeypatch, encrypted, destination):
     connection = Mock()
     connection.__enter__ = Mock(return_value=connection)
     connection.__exit__ = Mock(return_value=False)
@@ -77,30 +89,23 @@ def test_failed_integrity_check_preserves_destination(tmp_path, monkeypatch):
     monkeypatch.setattr("src.backup.sqlite3.connect", Mock(return_value=connection))
     with pytest.raises(ValueError, match="integrity check failed"):
         restore_backup(encrypted, destination, "test passphrase")
-    assert destination.read_bytes() == b"original"
-    assert not destination.with_suffix(".db.tmp").exists()
+    assert_preserved(destination)
     connection.close.assert_called_once_with()
 
 
-def test_backup_checksums_describe_persisted_bytes(tmp_path):
-    source = tmp_path / "source.db"
+def test_backup_checksums_describe_persisted_bytes(tmp_path, db_path):
     encrypted = tmp_path / "nested" / "backup.enc"
     destination = tmp_path / "restored" / "destination.db"
-    initialise(source)
-    checksum = create_backup(source, encrypted, "test passphrase")
+    checksum = create_backup(db_path, encrypted, "test passphrase")
     assert checksum == hashlib.sha256(encrypted.read_bytes()).hexdigest()
     restored_checksum = restore_backup(encrypted, destination, "test passphrase")
     assert restored_checksum == hashlib.sha256(destination.read_bytes()).hexdigest()
-    assert destination.read_bytes() == source.read_bytes()
+    assert destination.read_bytes() == db_path.read_bytes()
 
 
-def test_failed_restore_replacement_cleans_staging_and_preserves_destination(tmp_path, monkeypatch):
-    source = tmp_path / "source.db"
-    initialise(source)
-    encrypted = tmp_path / "backup.enc"
-    create_backup(source, encrypted, "test passphrase")
-    destination = tmp_path / "destination.db"
-    destination.write_bytes(b"original")
+def test_failed_restore_replacement_cleans_staging_and_preserves_destination(
+    monkeypatch, encrypted, destination,
+):
 
     def failed_replace(_path, _target):
         raise OSError("Destination cannot be replaced")
@@ -108,17 +113,10 @@ def test_failed_restore_replacement_cleans_staging_and_preserves_destination(tmp
     monkeypatch.setattr(Path, "replace", failed_replace)
     with pytest.raises(OSError, match="cannot be replaced"):
         restore_backup(encrypted, destination, "test passphrase")
-    assert destination.read_bytes() == b"original"
-    assert not destination.with_suffix(".db.tmp").exists()
+    assert_preserved(destination)
 
 
-def test_failed_restore_write_cleans_partial_staging(tmp_path, monkeypatch):
-    source = tmp_path / "source.db"
-    initialise(source)
-    encrypted = tmp_path / "backup.enc"
-    create_backup(source, encrypted, "test passphrase")
-    destination = tmp_path / "destination.db"
-    destination.write_bytes(b"original")
+def test_failed_restore_write_cleans_partial_staging(monkeypatch, encrypted, destination):
     write_bytes = Path.write_bytes
 
     def partial_write(path, content):
@@ -128,8 +126,7 @@ def test_failed_restore_write_cleans_partial_staging(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "write_bytes", partial_write)
     with pytest.raises(OSError, match="Disk write failed"):
         restore_backup(encrypted, destination, "test passphrase")
-    assert destination.read_bytes() == b"original"
-    assert not destination.with_suffix(".db.tmp").exists()
+    assert_preserved(destination)
 
 
 @pytest.mark.parametrize("command", ["create", "restore"])

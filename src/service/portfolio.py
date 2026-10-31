@@ -3,17 +3,17 @@ from collections.abc import Iterable
 from datetime import date
 
 from src.log_messages import error as error_messages
+from src.models.dto.history_point import HistoryPoint
 from src.models.entry.manual_balance import ManualBalance
-from src.models.entry.validation import required_date, required_text
-from src.models.history.history_point import HistoryPoint
 from src.models.entry.statement_review import StatementReview
+from src.models.entry.validation import required_date, required_text
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.models.portfolio.institution import Institution
-from src.repo.contracts import BalanceWriter, PortfolioReader
+from src.repo.portfolio import PortfolioStore
 
 
 class PortfolioActions:
-    def __init__(self, writer: BalanceWriter):
+    def __init__(self, writer: PortfolioStore):
         self._writer = writer
 
     def institutions(self) -> tuple[Institution, ...]:
@@ -21,11 +21,6 @@ class PortfolioActions:
 
     def save_manual(self, command: ManualBalance) -> None:
         self._writer.save([command.snapshot()])
-
-    def save_statement(self, snapshot: BalanceSnapshot) -> None:
-        if snapshot.source != "statement":
-            raise ValueError(error_messages.STATEMENT_IMPORT_REQUIRES_A_STATEMENT_SOURCED_BALANCE)
-        self._writer.save([snapshot])
 
     def save_statement_balances(self, snapshots: list[BalanceSnapshot]) -> int:
         if not snapshots or any(snapshot.source != "statement" for snapshot in snapshots):
@@ -46,7 +41,7 @@ class PortfolioActions:
 
 
 class PortfolioHistory:
-    def __init__(self, reader: PortfolioReader):
+    def __init__(self, reader: PortfolioStore):
         self._reader = reader
 
     def at_dates(self, dates: Iterable[date], currency: str) -> tuple[HistoryPoint, ...]:

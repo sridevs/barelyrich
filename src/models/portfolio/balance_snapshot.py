@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+
 from src.log_messages import error as error_messages
-from src.models.portfolio.validation import account_number
-from src.models.portfolio.validation import account_product_type
-from src.models.portfolio.validation import currency_code
-from src.models.portfolio.validation import decimal_value
-from src.models.portfolio.validation import institution_name
+from src.models.portfolio.validation import (
+    account_number,
+    account_product_type,
+    currency_code,
+    decimal_value,
+    institution_name,
+    transaction_metadata,
+    transaction_movements,
+)
 
 
 @dataclass(frozen=True)
@@ -23,9 +27,18 @@ class BalanceSnapshot:
     source: str
     account_number: str | None = None
     product_type: str = ""
+    withdrawal: Decimal | None = None
+    deposit: Decimal | None = None
+    description: str = ""
+    transaction_key: str = ""
+    row_number: int = 0
 
     @property
-    def identity(self) -> tuple[str, str, date] | tuple[str, str, str, date]:
+    def identity(self) -> tuple:
+        identity = self._balance_identity()
+        return identity + (self.transaction_key,) if self.transaction_key else identity
+
+    def _balance_identity(self) -> tuple:
         if self.account_number is None:
             return self.institution, self.account, self.as_of
         return (
@@ -56,6 +69,13 @@ class BalanceSnapshot:
         if self.is_liability and self.balance < 0:
             raise ValueError(error_messages.LIABILITIES_MUST_BE_ENTERED_AS_POSITIVE_AMOUNTS_OWED)
         self._validate_provenance()
+        self._validate_transaction()
+
+    def _validate_transaction(self) -> None:
+        present = transaction_movements(self.withdrawal, self.deposit)
+        transaction_metadata(self.description, self.row_number, present)
+        if bool(self.transaction_key) != present:
+            raise ValueError(error_messages.INVALID_TRANSACTION_MOVEMENT)
 
     def _validate_provenance(self) -> None:
         if type(self.as_of) is not date or self.as_of > date.today():

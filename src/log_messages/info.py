@@ -3,18 +3,14 @@
 # Document preparation and extraction routing.
 PDF_TEXT_EXTRACTION = "Statement phase: PDF parser - extracting embedded text."
 PDF_TEXT_AVAILABLE = "PDF parser: embedded text available on all %d pages."
-PDF_TEXT_MISSING = "PDF parser: a page has no text; using the vision path."
-PDF_IMAGE_PREPARATION = "Statement phase: PDF renderer - preparing page images for vision."
 DOCUMENT_PROCESSED = "Statement document processing completed in %.2fs (pages=%d)"
-EXTRACTION_STARTED = "Statement phase: %s extraction (pages=%d)."
-VISION_FALLBACK = "Vision fallback: required text output data is missing; rendering the full PDF."
-VISION_EXTRACTION_STARTED = "Statement phase: vision model extraction (pages=%d)."
 
 # Model lifecycle and output validation.
-MODEL_LOADING = "Statement model: kind=%s, model=%s; loading/reusing local weights."
-MODEL_INPUT_PREPARATION = "Statement phase: model input preparation."
-TOKEN_GENERATION = "Statement phase: token generation (kind=%s, device=%s, input_tokens=%d)."
 GENERATION_STARTED = "Statement generation: %s, attempt=%d started."
+GENERATION_DIAGNOSTICS = (
+    "Generation diagnostics: input_tokens=%s, generated_tokens=%s, "
+    "elapsed_seconds=%.2f, first_token_seconds=%s, decode_tokens_per_second=%.2f, eos=%s"
+)
 OUTPUT_VALIDATION = "Statement phase: output validation (%s, attempt=%d)."
 EQUIVALENT_BALANCES_COLLAPSED = (
     "Statement normalization: repeated equivalent balance rows collapsed for review "
@@ -22,3 +18,11 @@ EQUIVALENT_BALANCES_COLLAPSED = (
 )
 PREVIEW_READY = "Statement phase: preview ready for human review; no balances saved."
 INFERENCE_FINISHED = "Local statement inference finished in %.2fs (pages=%d)"
+FIELD_REPAIR_STARTED = "Repairing %d rejected scalar fields; preserving other statement fields."
+FIELD_REPAIR_FINISHED = "Targeted field correction passed schema and financial validation."
+ROW_REPAIR_STARTED = "Repairing %d rejected financial rows; preserving all other rows."
+ROW_REPAIR_FINISHED = "Targeted row correction passed schema and financial validation."
+CURRENCY_ACCOUNT_SECTIONS_MERGED = (
+    "Statement normalization: merged currency account sections (%s sections, %s accounts)."
+)
+CHUNK_EXTRACTION = "Statement chunk extraction: pages=%s (%s/%s)"

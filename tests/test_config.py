@@ -6,18 +6,13 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from src import config
-from src.documents.reader import StatementDocumentReader
-from src.documents.images import StatementPdf
-from src.inference.transformers_runtime import TransformersRuntimeConfig
+from src.inference.configuration import OllamaRuntimeConfig
 from src.models.portfolio.account_value import AccountValue
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.models.portfolio.portfolio import Portfolio
-from src.models.statements.statement_document import StatementDocument
-from src.models.statements.statement_page import StatementPage
-from src.repo.db import initialise
-from src.repo.portfolio import PortfolioStore
-from src.ui.presentation import money, PortfolioPresenter
-
+from src.readers.statement_pdf import StatementPdf
+from src.readers.statement_reader import read_statement
+from src.ui.presentation import PortfolioPresenter, money
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
 
@@ -36,10 +31,7 @@ def test_data_directory_resolves_defaults_and_environment_each_time(tmp_path, mo
     assert config.data_directory() == tmp_path / "another"
 
 
-def test_configured_display_currency_is_supported_by_repository(tmp_path, monkeypatch):
-    path = tmp_path / config.PORTFOLIO_DATABASE
-    initialise(path)
-    store = PortfolioStore(path)
+def test_configured_display_currency_is_supported_by_repository(store, monkeypatch):
     today = date.today()
     store.save([BalanceSnapshot(
         "dbs_sg", "Savings", "SGD", Decimal("100"), "asset", today, "manual",
@@ -96,27 +88,17 @@ def test_staleness_and_money_use_shared_settings(monkeypatch):
 
 def test_statement_size_limit_uses_config(monkeypatch):
     monkeypatch.setattr(config, "MAX_STATEMENT_BYTES", 3)
-    monkeypatch.setattr(StatementPdf, "render", lambda statement: (b"page image",))
-    assert StatementDocumentReader().read("statement.pdf", b"abc").page(1).image == b"page image"
+    monkeypatch.setattr(StatementPdf, "text", lambda statement: ("page text",))
+    assert read_statement("statement.pdf", b"abc").page(1).text == "page text"
     with pytest.raises(ValueError, match="3e-06 MB"):
-        StatementDocumentReader().read("statement.pdf", b"abcd")
-
-
-def test_image_limit_is_shared_with_domain_validation(monkeypatch):
-    monkeypatch.setattr(config, "MAX_RENDERED_IMAGE_BYTES", 3)
-    page = StatementPage(1, b"abc")
-    assert StatementDocument((page,))
-    with pytest.raises(ValueError, match="image bytes"):
-        StatementPage(1, b"abcd")
+        read_statement("statement.pdf", b"abcd")
 
 
 def test_runtime_defaults_and_upload_limit_come_from_config():
-    runtime = TransformersRuntimeConfig()
-    assert runtime.model_name == config.DEFAULT_TRANSFORMERS_MODEL
-    assert runtime.device == config.DEFAULT_TRANSFORMERS_DEVICE
+    runtime = OllamaRuntimeConfig()
+    assert runtime.model_name == config.DEFAULT_OLLAMA_MODEL
+    assert runtime.context_tokens == config.DEFAULT_OLLAMA_CONTEXT_TOKENS
     assert runtime.max_new_tokens == config.DEFAULT_MAX_NEW_TOKENS
-    assert runtime.max_input_tokens == config.DEFAULT_MAX_INPUT_TOKENS
-    assert runtime.max_image_pixels == config.DEFAULT_MAX_IMAGE_PIXELS
     assert runtime.max_time_seconds == config.DEFAULT_MAX_TIME_SECONDS
     assert config.STATEMENT_UPLOAD_MB == 10
     assert config.STATEMENT_UPLOAD_MB * 1024**2 >= config.MAX_STATEMENT_BYTES

@@ -1,26 +1,29 @@
-from collections.abc import Callable, MutableMapping
 import hashlib
 from typing import cast
 
+from src.log_messages import error as error_messages
 from src.models.entry.statement_review import StatementReview
 from src.models.portfolio.validation import account_number
+from src.models.statements.statement_balance import StatementBalance
 from src.models.statements.statement_extraction import StatementExtraction
+from src.models.statements.transaction_draft import TransactionDraft
+from src.ui.session_scope import SessionScope
 
 
-class StatementReviewSession:
+class StatementReviewSession(SessionScope):
     """Session-scoped review lifecycle, independent of Streamlit and storage."""
-
-    def __init__(self, state: MutableMapping[str, object], key: Callable[[str], str] = str):
-        self._state = state
-        self._key = key
 
     @property
     def upload_revision(self) -> int:
-        return cast(int, self._state.get(self._key("statement_upload_revision"), 0))
+        return cast(int, self._get("statement_upload_revision", 0))
 
     @property
     def preview(self) -> StatementReview | None:
-        return cast(StatementReview | None, self._state.get(self._key("statement_preview")))
+        review = cast(StatementReview | None, self._get("statement_preview"))
+        if review is not None and type(review) is not StatementReview:
+            review = StatementReview.restore(review)
+            self._set("statement_preview", review)
+        return review
 
     def alias_key(self, review: StatementReview) -> str:
         return self._key(f"statement_alias_{self.upload_revision}_{review.file_digest}")
@@ -52,6 +55,8 @@ class StatementReviewSession:
 
     @property
     def reviewed_preview(self) -> StatementReview | None:
+        if self.editing_account:
+            raise ValueError(error_messages.STATEMENT_EDIT_PENDING)
         review = self.preview
         if review is None:
             return None
@@ -62,17 +67,58 @@ class StatementReviewSession:
             review = review.with_account_type(account.number, value)
         return review
 
+    @property
+    def editing_account(self) -> str | None:
+        return cast(str | None, self._get("statement_editing_account"))
+
+    def begin_edit(self, number: str) -> None:
+        if self.is_account_saved(number):
+            raise ValueError(error_messages.STATEMENT_EDIT_SAVED)
+        self._set("statement_editing_account", account_number(number))
+
+    def cancel_edit(self) -> None:
+        editing_account = self.editing_account
+        if editing_account:
+            self._state.pop(self.editor_key(editing_account) + "_data", None)
+            self._state.pop(self.editor_key(editing_account) + "_error", None)
+        self._drop("statement_editing_account", "statement_editor_draft")
+        self._set("statement_edit_revision", cast(int, self._get("statement_edit_revision", 0)) + 1)
+
+    def editor_key(self, number: str) -> str:
+        revision = self._get("statement_edit_revision", 0)
+        return self._key(f"statement_editor_{account_number(number)}_{revision}")
+
+    @property
+    def editor_draft(self) -> tuple[TransactionDraft, ...] | None:
+        return cast(
+            tuple[TransactionDraft, ...] | None,
+            self._get("statement_editor_draft"),
+        )
+
+    def reorder_draft(self, number: str, rows: tuple[TransactionDraft, ...]) -> None:
+        if self.editing_account != account_number(number) or self.is_account_saved(number):
+            raise ValueError(error_messages.STATEMENT_EDIT_NOT_STARTED)
+        self.cancel_edit()
+        self.begin_edit(number)
+        self._set("statement_editor_draft", rows)
+
+    def apply_balances(self, number: str, balances: tuple[StatementBalance, ...]) -> None:
+        if self.preview is None or self.editing_account != account_number(number):
+            raise ValueError(error_messages.STATEMENT_EDIT_NOT_STARTED)
+        self._set("statement_preview", self.preview.with_account_balances(number, balances))
+        self.cancel_edit()
+
     def is_account_saved(self, number: str) -> bool:
-        saved = cast(frozenset[str], self._state.get(self._key("statement_saved_accounts"), frozenset()))
+        saved = cast(frozenset[str], self._get("statement_saved_accounts", frozenset()))
         return account_number(number) in saved
 
     def mark_account_saved(self, number: str) -> None:
         saved = set(cast(
             frozenset[str],
-            self._state.get(self._key("statement_saved_accounts"), frozenset()),
+            self._get("statement_saved_accounts", frozenset()),
         ))
         saved.add(account_number(number))
-        self._state[self._key("statement_saved_accounts")] = frozenset(saved)
+        self._set("statement_saved_accounts", frozenset(saved))
 
     def widget_key(self, name: str) -> str:
         return self._key(name)
@@ -91,16 +137,13 @@ class StatementReviewSession:
             self._state[self.account_alias_key(review, number) + "_suggestion"] = alias
         for account in extraction.accounts:
             self._state[self.account_type_key(review, account.number)] = account.account_type
-        self._state[self._key("statement_preview")] = review
+        self._set("statement_preview", review)
 
     def clear(self) -> None:
-        self._state.pop(self._key("statement_preview"), None)
-        self._state.pop(self._key("statement_saved_accounts"), None)
-        confirmation_prefix = self._key("statement_confirmation_")
-        for state_key in list(self._state):
-            if state_key.startswith(confirmation_prefix):
-                self._state.pop(state_key, None)
+        self.cancel_edit()
+        self._drop("statement_preview", "statement_saved_accounts")
+        self._drop_prefixed("statement_confirmation_")
 
     def finish(self) -> None:
         self.clear()
-        self._state[self._key("statement_upload_revision")] = self.upload_revision + 1
+        self._set("statement_upload_revision", self.upload_revision + 1)

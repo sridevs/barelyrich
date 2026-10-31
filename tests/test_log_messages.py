@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from src.agents.output import InstitutionOutput
 from src.log_messages import error
 
-
 PACKAGE = Path(__file__).resolve().parents[1] / "src"
 
 

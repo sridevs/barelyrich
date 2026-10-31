@@ -1,19 +1,42 @@
 import asyncio
+import json
 from threading import get_ident
 
+import pytest
+from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import (
-    ModelRequest, ModelResponse, RetryPromptPart, TextPart, UserPromptPart,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    TextPart,
+    UserPromptPart,
 )
 from pydantic_ai.models import ModelRequestParameters
-from pydantic_ai.exceptions import UserError
 from pydantic_core import ErrorDetails
-import pytest
 
 from src.agents.local_model import LocalStatementModel
-from src.log_messages import error
 from src.agents.response import MissingStatementData, StatementParsingError
+from src.agents.statement_agent import StatementAgent
+from src.log_messages import error
 from src.models.statements.statement_document import StatementDocument
-from src.models.statements.statement_page import StatementPage
+from tests.prompt_fixtures import STATEMENT_RESPONSE_EXAMPLE
+from tests.statement_fixtures import RepairingRuntime, text_document
+
+
+def test_domain_retry_passes_specific_date_reason_and_merged_row_location():
+    runtime = RepairingRuntime(
+        ["2025-18-11", "100.00", "SGD", None, "1.00", "Interest"],
+        ["2025-11-18", "100.00", "SGD", None, "1.00", "Interest"],
+    )
+    result = StatementAgent(runtime).parse(text_document())
+    assert len(runtime.prompts) == 2
+    assert "Merged accounts[0].balances[0]" in runtime.prompts[1]
+    assert error.AS_OF_DATE_MUST_BE_YYYY_MM_DD in runtime.prompts[1]
+    assert "Validation error:" in runtime.prompts[1]
+    assert result.balances[0].as_of.isoformat() == "2025-11-18"
+
+
+COMPLETE_RESPONSE = json.dumps(STATEMENT_RESPONSE_EXAMPLE)
 
 
 class LocalRuntime:
@@ -24,25 +47,49 @@ class LocalRuntime:
     def generate(self, document: StatementDocument, prompt: str) -> str:
         self.calls.append((document, prompt))
         self.thread_id = get_ident()
-        return '{"account": {}, "balances": []}'
+        return COMPLETE_RESPONSE
 
 
-def test_adapter_uses_central_exception_wording(monkeypatch):
+@pytest.fixture
+def runtime():
+    return LocalRuntime()
+
+
+@pytest.fixture
+def document():
+    return text_document()
+
+
+@pytest.fixture
+def model(runtime, document):
+    return LocalStatementModel(runtime, document, "original instructions")
+
+
+def test_ollama_does_not_require_literal_account_match_in_source_text():
+    model = LocalStatementModel(
+        LocalRuntime(), text_document("Account identifier split by PDF layout"), "instructions",
+    )
+    payload = {
+        "institution": {"name": "Bank"},
+        "accounts": [{"number": "****9669", "balances": [{
+            "description": "",
+            "withdrawal": None, "deposit": None,
+            "balance": "12.00", "currency": "INR", "as_of": "2026-09-30",
+        }]}],
+    }
+    model._validate_response(json.dumps(payload))
+
+
+def test_adapter_uses_central_exception_wording(monkeypatch, model):
     monkeypatch.setattr(error, "LOCAL_INFERENCE_TEXT_ONLY", "Unsupported inference options.")
     monkeypatch.setattr(error, "NO_STATEMENT", "Statement data is missing.")
     with pytest.raises(StatementParsingError, match="Unsupported inference options"):
         LocalStatementModel._require_text_output(ModelRequestParameters(output_mode="native"))
-    model = LocalStatementModel(
-        LocalRuntime(), StatementDocument((StatementPage(1, b"", "statement text"),)), "instructions",
-    )
     with pytest.raises(MissingStatementData, match="Statement data is missing"):
         model._validate_response("")
 
 
-def test_adapter_runs_in_process_off_the_event_loop_and_preserves_image_identity():
-    runtime = LocalRuntime()
-    document = StatementDocument((StatementPage(1, b"page image"),))
-    model = LocalStatementModel(runtime, document, "original instructions")
+def test_adapter_runs_in_process_off_the_event_loop_and_preserves_document_identity(runtime, document, model):
     response = asyncio.run(model.request(
         [ModelRequest(parts=[UserPromptPart("original instructions")])],
         None, ModelRequestParameters(),
@@ -50,16 +97,13 @@ def test_adapter_runs_in_process_off_the_event_loop_and_preserves_image_identity
     assert runtime.calls == [(document, "original instructions")]
     assert runtime.calls[0][0] is document
     assert runtime.thread_id != get_ident()
-    assert response.parts == [TextPart('{"account": {}, "balances": []}')]
+    assert response.parts == [TextPart(COMPLETE_RESPONSE)]
     assert response.model_name == model.model_name
-    assert model.system == "transformers"
+    assert model.system == "ollama"
     assert model.profile.supports_tools is False
 
 
-def test_prompt_is_read_only_and_implementation_state_is_private():
-    runtime = LocalRuntime()
-    document = StatementDocument((StatementPage(1, b"page image"),))
-    model = LocalStatementModel(runtime, document, "original instructions")
+def test_prompt_is_read_only_and_implementation_state_is_private(model):
     assert model.prompt == "original instructions"
     with pytest.raises(AttributeError):
         model.prompt = "replacement instructions"
@@ -67,10 +111,7 @@ def test_prompt_is_read_only_and_implementation_state_is_private():
         assert not hasattr(model, field)
 
 
-def test_adapter_replays_original_instructions_with_framework_retry():
-    runtime = LocalRuntime()
-    document = StatementDocument((StatementPage(1, b"page image"),))
-    model = LocalStatementModel(runtime, document, "original instructions")
+def test_adapter_replays_original_instructions_with_framework_retry(runtime, document, model):
     asyncio.run(model.request([
         ModelRequest(parts=[UserPromptPart("original instructions")]),
         ModelResponse(
@@ -84,11 +125,7 @@ def test_adapter_replays_original_instructions_with_framework_retry():
     assert "private previous response" not in runtime.calls[0][1]
 
 
-def test_adapter_uses_framework_structured_retry_feedback():
-    runtime = LocalRuntime()
-    model = LocalStatementModel(
-        runtime, StatementDocument((StatementPage(1, b"page image"),)), "original instructions",
-    )
+def test_adapter_uses_framework_structured_retry_feedback(runtime, model):
     asyncio.run(model.request(
         [ModelRequest(parts=[RetryPromptPart([
             ErrorDetails(
@@ -101,11 +138,7 @@ def test_adapter_uses_framework_structured_retry_feedback():
     assert "OUTPUT RETRY" in runtime.calls[0][1]
 
 
-def test_retry_logs_schema_path_and_error_without_private_values(caplog):
-    runtime = LocalRuntime()
-    model = LocalStatementModel(
-        runtime, StatementDocument((StatementPage(1, b"image"),)), "original instructions",
-    )
+def test_retry_logs_schema_path_and_error_without_private_values(caplog, runtime, model):
     asyncio.run(model.request(
         [ModelRequest(parts=[RetryPromptPart([
             ErrorDetails(
@@ -125,11 +158,7 @@ def test_retry_logs_schema_path_and_error_without_private_values(caplog):
     assert "private balance" not in caplog.text
 
 
-def test_adapter_uses_only_latest_framework_correction_and_logs_once(caplog):
-    runtime = LocalRuntime()
-    model = LocalStatementModel(
-        runtime, StatementDocument((StatementPage(1, b"page image"),)), "original instructions",
-    )
+def test_adapter_uses_only_latest_framework_correction_and_logs_once(caplog, runtime, model):
     asyncio.run(model.request([
         ModelRequest(parts=[RetryPromptPart(
             'Model returned a duplicate JSON field: "balances"; no balances were saved.',
@@ -145,11 +174,7 @@ def test_adapter_uses_only_latest_framework_correction_and_logs_once(caplog):
 
 
 
-def test_adapter_refuses_unsupported_output_modes_before_generation():
-    runtime = LocalRuntime()
-    model = LocalStatementModel(
-        runtime, StatementDocument((StatementPage(1, b"page image"),)), "original instructions",
-    )
+def test_adapter_refuses_unsupported_output_modes_before_generation(runtime, model):
     with pytest.raises(UserError, match="Native structured output"):
         asyncio.run(model.request([], None, ModelRequestParameters(output_mode="native")))
     assert not runtime.calls

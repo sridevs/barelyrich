@@ -3,7 +3,9 @@ import pytest
 
 from src.agents.response import STATEMENT_RESPONSE_SCHEMA
 from src.models.currencies import (
-    ISO_CURRENCY_CODES, ISO_CURRENCY_REFERENCE, iso_currency_code,
+    ISO_CURRENCY_CODES,
+    ISO_CURRENCY_REFERENCE,
+    iso_currency_code,
 )
 
 
@@ -11,7 +13,7 @@ def test_currency_reference_and_schema_derive_from_the_same_iso_dataset():
     expected = {currency.alpha_3 for currency in pycountry.currencies}
     assert set(ISO_CURRENCY_CODES) == expected
     assert set(
-        STATEMENT_RESPONSE_SCHEMA["$defs"]["BalanceOutput"]["properties"]["currency"]["enum"]
+        STATEMENT_RESPONSE_SCHEMA["$defs"]["BalanceOutput"]["prefixItems"][2]["enum"]
     ) == expected
     for code in ISO_CURRENCY_CODES:
         assert iso_currency_code(code) == code

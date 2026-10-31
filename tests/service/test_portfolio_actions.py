@@ -4,21 +4,20 @@ from unittest.mock import create_autospec
 
 import pytest
 
+from src.models.entry.manual_balance import ManualBalance
+from src.models.entry.validation import required_date, required_text
 from src.models.portfolio.account_value import AccountValue
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.models.portfolio.portfolio import Portfolio
-from src.models.entry.manual_balance import ManualBalance
-from src.models.entry.validation import required_date, required_text
-from src.repo.contracts import BalanceWriter, PortfolioReader
+from src.repo.portfolio import PortfolioStore
 from src.service.portfolio import PortfolioActions, PortfolioHistory
-
 
 DAY = date(2026, 1, 1)
 
 
 @pytest.fixture
 def writer():
-    return create_autospec(BalanceWriter, instance=True)
+    return create_autospec(PortfolioStore, instance=True)
 
 
 def command(**changes):
@@ -58,7 +57,7 @@ def test_save_statement_persists_a_statement_sourced_snapshot(writer):
     statement_snapshot = BalanceSnapshot(
         "dbs_sg", "Savings", "SGD", Decimal("123.45"), "asset", DAY, "statement",
     )
-    PortfolioActions(writer).save_statement(statement_snapshot)
+    PortfolioActions(writer).save_statement_balances([statement_snapshot])
     writer.save.assert_called_once_with([statement_snapshot])
 
 
@@ -67,7 +66,7 @@ def test_save_statement_rejects_other_sources_without_writing(writer):
         "dbs_sg", "Savings", "SGD", Decimal("123.45"), "asset", DAY, "csv",
     )
     with pytest.raises(ValueError, match="statement-sourced"):
-        PortfolioActions(writer).save_statement(csv_snapshot)
+        PortfolioActions(writer).save_statement_balances([csv_snapshot])
     writer.save.assert_not_called()
 
 
@@ -112,7 +111,7 @@ def valued_portfolio(day):
 
 
 def test_history_uses_each_days_valuation_and_keeps_decimal_precision():
-    reader = create_autospec(PortfolioReader, instance=True)
+    reader = create_autospec(PortfolioStore, instance=True)
     reader.portfolio.side_effect = lambda day, currency: valued_portfolio(day)
     points = PortfolioHistory(reader).at_dates(
         (DAY + timedelta(days=offset) for offset in range(3)), "INR",
@@ -128,7 +127,7 @@ def test_history_uses_each_days_valuation_and_keeps_decimal_precision():
 
 
 def test_history_missing_valuation_raises_instead_of_omitting_point():
-    reader = create_autospec(PortfolioReader, instance=True)
+    reader = create_autospec(PortfolioStore, instance=True)
     reader.portfolio.return_value = Portfolio((), "INR", DAY)
     with pytest.raises(ValueError, match="unavailable for 2026-01-01"):
         PortfolioHistory(reader).at_dates((DAY,), "INR")

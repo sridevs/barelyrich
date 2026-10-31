@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 
+
 def convert(amount, rate):
     """Rate is units of quote currency per one base-currency unit."""
     return Decimal(str(amount)) * Decimal(str(rate))

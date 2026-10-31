@@ -3,9 +3,8 @@ import logging
 import streamlit as st
 
 from src import config
-from src.ui.dashboard import render_portfolio
 from src.repo.db import initialise
-
+from src.ui.dashboard import render_portfolio
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("src").setLevel(logging.INFO)

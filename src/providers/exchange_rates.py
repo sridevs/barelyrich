@@ -1,16 +1,16 @@
 
-from datetime import date
-from decimal import Decimal, localcontext
 import errno
 import json
 import socket
 import ssl
+from datetime import date
+from decimal import Decimal, localcontext
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from src.log_messages import error as error_messages
 from src import config
+from src.log_messages import error as error_messages
 from src.models.portfolio.exchange_rate_observation import ExchangeRateObservation
 from src.models.portfolio.validation import currency_code, observation_date
 from src.retry import retry
