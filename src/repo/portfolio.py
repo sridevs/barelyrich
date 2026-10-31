@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from sqlite3 import Connection, Row
@@ -7,6 +7,7 @@ from typing import Literal
 
 from src import config
 from src.log_messages import error as error_messages
+from src.models.entry.precious_metal_valuation import PreciousMetalValuation
 from src.models.entry.statement_review import StatementReview
 from src.models.portfolio.account_value import AccountValue
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
@@ -14,6 +15,8 @@ from src.models.portfolio.exchange_rate_observation import ExchangeRateObservati
 from src.models.portfolio.exchange_rates import ExchangeRates
 from src.models.portfolio.institution import Institution
 from src.models.portfolio.portfolio import Portfolio
+from src.models.portfolio.precious_metal_holding import PreciousMetalHolding
+from src.models.portfolio.precious_metal_price import PreciousMetalPrice
 from src.models.portfolio.validation import (
     account_number,
     account_product_type,
@@ -51,6 +54,20 @@ class PortfolioStore:
 
     def save_rate(self, currency: str, rate: str, as_of: date) -> None:
         self._save_rates((ExchangeRateObservation.parse(currency, rate, as_of),), "manual")
+
+    def save_precious_metal_prices(self, prices: tuple[PreciousMetalPrice, ...]) -> None:
+        with database_session(self._path) as conn:
+            for price in prices:
+                _save_metal_price(conn, price)
+
+    def save_precious_metal_valuation(self, valuation: PreciousMetalValuation) -> None:
+        snapshot = valuation.snapshot()
+        with database_session(self._path) as conn:
+            price_id = _save_metal_price(conn, valuation.holding.price)
+            transaction_id = _BalanceImport(conn).save_returning_id(snapshot)
+            conn.execute(load_query("upsert_precious_metal_valuation"), (
+                transaction_id, price_id, str(valuation.holding.quantity),
+            ))
 
     def portfolio(self, as_of: date, base_currency: str | None = None) -> Portfolio:
         if base_currency is None:
@@ -113,6 +130,17 @@ def _rate_rows(observations: tuple[ExchangeRateObservation, ...], source: str) -
     return [(item.currency, item.as_of.isoformat(), str(item.rate), source) for item in observations]
 
 
+def _save_metal_price(conn: Connection, price: PreciousMetalPrice) -> int:
+    return conn.execute(load_query("upsert_precious_metal_price"), (
+        price.metal, price.purity, price.currency, price.unit, str(price.price),
+        price.observation_time, price.source,
+    )).fetchone()["id"]
+
+
+def _transaction_identity(item: BalanceSnapshot, account_id: int) -> tuple[object, ...]:
+    return account_id, item.as_of.isoformat(), item.transaction_key
+
+
 def _institution(row: Row) -> Institution:
     return Institution(row["key"], row["name"], row["country_code"], row["account_type"])
 
@@ -125,7 +153,18 @@ def _account_value(row: Row, rates: ExchangeRates, base: str) -> AccountValue:
         date.fromisoformat(row["as_of"]), row["source"], row["recorded_at"], rate, rate_date,
         row["institution_name"], row["institution_country"], row["institution_type"],
         row["account_number"], row["product_type"],
+        _metal_holding(row),
     )
+
+
+def _metal_holding(row: Row) -> PreciousMetalHolding | None:
+    if row["metal_quantity"] is None:
+        return None
+    return PreciousMetalHolding(Decimal(row["metal_quantity"]), PreciousMetalPrice(
+        row["metal"], row["metal_purity"], row["metal_currency"], row["metal_unit"],
+        Decimal(row["metal_price"]), row["metal_source"],
+        datetime.fromisoformat(row["metal_observed_at"]),
+    ))
 
 
 class _BalanceImport:
@@ -138,19 +177,37 @@ class _BalanceImport:
         self._statement = load_query("upsert_account_balance")
 
     def save(self, item: BalanceSnapshot) -> int:
+        item, account_id = self._prepared(item)
+        return self._write(item, account_id)
+
+    def save_returning_id(self, item: BalanceSnapshot) -> int:
+        item, account_id = self._prepared(item)
+        self._write(item, account_id)
+        return self._conn.execute(
+            load_query("select_transaction_id"), _transaction_identity(item, account_id),
+        ).fetchone()["id"]
+
+    def _prepared(self, item: BalanceSnapshot) -> tuple[BalanceSnapshot, int]:
         institution = self._resolve_institution(item.institution)
         item = replace(item, institution=institution.key)
         self._replace_statement_pockets(item)
         if item.identity in self._seen:
             raise ValueError(error_messages.DUPLICATE_IMPORT_ACCOUNT_DATE)
         self._seen.add(item.identity)
-        account_id = self._account_id(item, institution)
-        return self._conn.execute(self._statement, (
+        return item, self._account_id(item, institution)
+
+    def _write(self, item: BalanceSnapshot, account_id: int) -> int:
+        """Upsert the balance and drop any metal valuation it no longer reflects."""
+        count = self._conn.execute(self._statement, (
             account_id, item.as_of.isoformat(), str(item.balance), item.source,
             None if item.withdrawal is None else str(item.withdrawal),
             None if item.deposit is None else str(item.deposit),
             item.description, item.transaction_key, item.row_number,
         )).rowcount
+        self._conn.execute(
+            load_query("delete_precious_metal_valuation"), _transaction_identity(item, account_id),
+        )
+        return count
 
     def _replace_statement_pockets(self, item: BalanceSnapshot) -> None:
         if item.source != "statement" or item.account_number is None or item.transaction_key:

@@ -15,7 +15,10 @@ WITH dated_transactions AS (
  GROUP BY a.institution,a.account_number
 )
 SELECT a.*, i.name AS institution_name, i.country_code AS institution_country,
-i.account_type AS institution_type, b.balance, b.as_of, b.source, b.recorded_at FROM accounts a
+i.account_type AS institution_type, b.balance, b.as_of, b.source, b.recorded_at,
+mp.metal AS metal, mp.purity AS metal_purity, mv.quantity AS metal_quantity,
+mp.price AS metal_price, mp.currency AS metal_currency, mp.unit AS metal_unit,
+mp.source AS metal_source, mp.observed_at AS metal_observed_at FROM accounts a
 JOIN institutions i ON i.key=a.institution
 JOIN latest_pockets p ON p.id=a.id
 LEFT JOIN latest_statements s
@@ -23,4 +26,6 @@ LEFT JOIN latest_statements s
 JOIN ranked_transactions b ON a.id=b.account_id AND b.as_of=p.as_of
 AND (s.as_of IS NULL OR p.as_of>=s.as_of)
 AND b.position=1
+LEFT JOIN precious_metal_valuations mv ON mv.transaction_id=b.id
+LEFT JOIN precious_metal_prices mp ON mp.id=mv.price_id
 ORDER BY a.institution,a.name,a.currency;

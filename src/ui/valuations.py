@@ -7,12 +7,30 @@ from src.models.currencies import ISO_CURRENCY_CODES
 from src.models.entry.manual_balance import ManualBalance
 from src.models.entry.validation import required_text
 from src.service.portfolio import PortfolioActions
+from src.service.precious_metals import PreciousMetalPricing
 from src.ui import ui_text
 from src.ui.feedback import show_saved
+from src.ui.precious_metals import render_precious_metal_valuation
 
 
-def render_manual_valuation(actions: PortfolioActions) -> None:
+def render_manual_valuation(
+    actions: PortfolioActions, pricing: PreciousMetalPricing | None = None,
+) -> None:
     _render_valuation_guidance()
+    if pricing is not None and _entry_type() == ui_text.PRECIOUS_METAL_ENTRY:
+        render_precious_metal_valuation(actions, pricing)
+    else:
+        _render_value_form(actions)
+
+
+def _entry_type() -> str:
+    return st.segmented_control(
+        ui_text.MANUAL_ENTRY_TYPE, (ui_text.VALUE_ENTRY, ui_text.PRECIOUS_METAL_ENTRY),
+        default=ui_text.VALUE_ENTRY, required=True, key="manual_entry_type",
+    )
+
+
+def _render_value_form(actions: PortfolioActions) -> None:
     with st.form("manual_valuation"):
         group, name, kind = _render_identity_inputs()
         currency, amount, as_of = _render_value_inputs()

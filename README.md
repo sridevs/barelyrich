@@ -57,9 +57,13 @@ Good to know:
 
 ### Manual valuation
 
-Use this for assets and debts without statements, such as property, gold or
-loans. Enter the total value of your share. Reusing the same name adds a
-dated update.
+Use this for assets and debts without statements, such as property or loans.
+Enter the total value of your share. For gold, choose **Precious metal**, enter
+the weight in grams and select 22K or 24K. BarelyRich estimates the INR value
+from a live USD gold spot quote and the latest daily USD/INR reference rate.
+The quote, rate source, time, purity and weight are saved with the valuation.
+The estimate excludes GST, making charges and jeweller premiums. Reusing the
+same name adds a dated update.
 
 ### Overview
 
@@ -81,9 +85,10 @@ Use only downloaded local models, not cloud-backed Ollama models.
 
 ## Privacy and backups
 
-Statements and model inference never leave your machine. Only currency codes and
-dates are sent to Frankfurter. The SQLite file is not encrypted, so keep it on
-an encrypted disk (for example, FileVault).
+Statements and model inference never leave your machine. Only currency codes
+and dates are sent to Frankfurter, and the XAU symbol is requested from
+gold-api.com for live gold pricing. The SQLite file is not encrypted, so keep
+it on an encrypted disk (for example, FileVault).
 
 Stop the app first, then create an encrypted backup:
 

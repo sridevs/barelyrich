@@ -5,6 +5,7 @@ from datetime import date
 from src.log_messages import error as error_messages
 from src.models.dto.history_point import HistoryPoint
 from src.models.entry.manual_balance import ManualBalance
+from src.models.entry.precious_metal_valuation import PreciousMetalValuation
 from src.models.entry.statement_review import StatementReview
 from src.models.entry.validation import required_date, required_text
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
@@ -21,6 +22,9 @@ class PortfolioActions:
 
     def save_manual(self, command: ManualBalance) -> None:
         self._writer.save([command.snapshot()])
+
+    def save_precious_metal(self, command: PreciousMetalValuation) -> None:
+        self._writer.save_precious_metal_valuation(command)
 
     def save_statement_balances(self, snapshots: list[BalanceSnapshot]) -> int:
         if not snapshots or any(snapshot.source != "statement" for snapshot in snapshots):

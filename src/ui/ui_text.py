@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from datetime import date
 
 from src import config
+from src.models.portfolio.precious_metal_price import PreciousMetalPrice
 
 CONFLICTING_SUMMARIES = (
     "Conflicting balance summaries need review. Use Edit extracted rows to keep one correct "
@@ -100,10 +101,30 @@ BALANCES_ALT = "Extracted dates, transactions, withdrawals, deposits and balance
 
 # Manual valuations.
 SAVE_VALUATION = "Save valuation"
+MANUAL_ENTRY_TYPE = "Manual entry type"
+VALUE_ENTRY = "Total value"
+PRECIOUS_METAL_ENTRY = "Precious metal"
+PRECIOUS_METALS_GROUP = "Precious metals"
+METAL = "Metal"
+PURITY = "Purity"
+METAL_WEIGHT = "Weight (grams)"
+METAL_RATE = "Indicative live rate"
+ESTIMATED_METAL_VALUE = "Estimated value"
+SAVE_METAL_HOLDING = "Save holding"
+METAL_VALUATION_CAVEAT = (
+    "Indicative spot estimate from the pure-metal market price, adjusted for purity. "
+    "Excludes GST, making charges and local jeweller premiums."
+)
+METAL_HOLDING_SAVED = "Holding saved with its rate, source and observation time."
+PRECIOUS_METAL = "Precious metal"
+WEIGHT = "Weight"
+PRECIOUS_METAL_RATE = "Precious metal rate"
+PRECIOUS_METAL_RATE_SOURCE = "Precious metal rate source"
+PRECIOUS_METAL_RATE_OBSERVED = "Precious metal rate observed at"
 VALUATION_GUIDANCE = (
     "Record gold, property, other assets, debts or an account without a statement. "
-    "Enter your ownership share's total estimated market value in its currency, not "
-    "quantity, purchase cost or a price per gram. Prices are not fetched automatically."
+    "For most entries, enter your ownership share's total estimated market value. "
+    "Use the precious-metal entry to enter weight and purity with an indicative INR price."
 )
 VALUATION_UPDATES = (
     "Reuse the same group and name for later valuations. The same date replaces its value; "
@@ -290,6 +311,14 @@ def fx_refreshed(published_dates: str) -> str:
         f"FX refreshed automatically from Frankfurter. Published rate dates: {published_dates}. "
         "Daily reference rates, not real-time trading quotes."
     )
+
+
+def metal_rate_provenance(price: PreciousMetalPrice) -> str:
+    return f"Source: {price.source}. Quote observed at {price.observation_time}."
+
+
+def metal_price_error(error: Exception) -> str:
+    return f"{error} No precious metal valuation was saved."
 
 
 def history_hover(as_of: date, currency: str, amount: str | None) -> str:

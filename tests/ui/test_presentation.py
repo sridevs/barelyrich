@@ -6,7 +6,8 @@ import pytest
 
 from src.models.portfolio.account_value import AccountValue
 from src.models.portfolio.portfolio import Portfolio
-from src.ui.presentation import PortfolioPresenter, money
+from src.ui.presentation import PortfolioPresenter, metal_rate, money
+from tests.metal_fixtures import gold_holding, gold_price
 
 DAY = date(2026, 1, 10)
 
@@ -115,3 +116,26 @@ def test_identity_conversion_does_not_display_fx_date():
     value = replace(account(), currency="INR", rate=Decimal(1))
     row = PortfolioPresenter(Portfolio((value,), "INR", DAY)).account_rows()[0]
     assert row["Oldest FX date used"] is None
+
+
+def test_metal_holding_adds_weight_rate_and_provenance_columns():
+    value = account(
+        account="Gold", currency="INR", balance=Decimal("126000"), rate=Decimal("1"),
+        precious_metal=gold_holding("10.500"),
+    )
+    row = PortfolioPresenter(Portfolio((value,), "INR", DAY)).account_rows()[0]
+    assert row["Precious metal"] == "Gold"
+    assert row["Purity"] == "22K"
+    assert row["Weight"] == "10.5 gram"
+    assert row["Precious metal rate"] == "INR 12,000.00 / gram"
+    assert row["Precious metal rate source"] == "gold-api.com + frankfurter.dev"
+    assert row["Precious metal rate observed at"] == "2026-01-10T09:30:00+00:00"
+
+
+def test_plain_accounts_have_no_metal_columns():
+    row = PortfolioPresenter(Portfolio((account(),), "INR", DAY)).account_rows()[0]
+    assert "Precious metal" not in row
+
+
+def test_metal_rate_formats_price_per_unit():
+    assert metal_rate(gold_price(price="123456.5")) == "INR 1,23,456.50 / gram"

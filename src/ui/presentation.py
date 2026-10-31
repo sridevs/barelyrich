@@ -3,6 +3,8 @@ from decimal import Decimal
 from src import config
 from src.models.portfolio.account_value import AccountValue
 from src.models.portfolio.portfolio import Portfolio
+from src.models.portfolio.precious_metal_holding import PreciousMetalHolding
+from src.models.portfolio.precious_metal_price import PreciousMetalPrice
 from src.ui import ui_text
 
 TableRow = dict[str, object]
@@ -24,6 +26,31 @@ def money(value: Decimal | None, currency: str = "") -> str | None:
         remaining = remaining[:-2]
     return sign + ",".join(reversed(groups)) + separator + fraction
 
+
+def metal_rate(price: PreciousMetalPrice) -> str:
+    return f"{price.currency} {money(price.price, price.currency)} / {price.unit}"
+
+
+def _detail_row(account: AccountValue) -> TableRow:
+    row: TableRow = {}
+    if account.account_number:
+        row[ui_text.ACCOUNT_NUMBER] = account.account_number
+        row[ui_text.ACCOUNT_TYPE] = account.product_type
+    if account.precious_metal:
+        row.update(_metal_row(account.precious_metal))
+    return row
+
+
+def _metal_row(holding: PreciousMetalHolding) -> dict[str, str]:
+    price = holding.price
+    return {
+        ui_text.PRECIOUS_METAL: price.metal.capitalize(),
+        ui_text.PURITY: price.purity,
+        ui_text.WEIGHT: f"{holding.quantity.normalize():f} {price.unit}",
+        ui_text.PRECIOUS_METAL_RATE: metal_rate(price),
+        ui_text.PRECIOUS_METAL_RATE_SOURCE: price.source,
+        ui_text.PRECIOUS_METAL_RATE_OBSERVED: price.observation_time,
+    }
 
 class PortfolioPresenter:
     """Build display data without database access or a Streamlit runtime."""
@@ -57,9 +84,7 @@ class PortfolioPresenter:
                 account.net_value, self._portfolio.base_currency,
             ),
         }
-        if account.account_number:
-            row[ui_text.ACCOUNT_NUMBER] = account.account_number
-            row[ui_text.ACCOUNT_TYPE] = account.product_type
+        row.update(_detail_row(account))
         row.update(self._provenance_row(account))
         return row
 

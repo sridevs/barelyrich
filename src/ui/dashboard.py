@@ -8,9 +8,11 @@ from src.providers.exchange_rates import (
     ExchangeRateFetchError,
     FrankfurterExchangeRateProvider,
 )
+from src.providers.spot_prices import GoldApiSpotPriceProvider
 from src.repo.portfolio import PortfolioStore
 from src.service.exchange_rates import ExchangeRateRefresh
 from src.service.portfolio import PortfolioActions, PortfolioHistory
+from src.service.precious_metals import PreciousMetalPricing
 from src.ui import ui_text
 from src.ui.dto.valuation_selection import ValuationSelection
 from src.ui.forms import render_account_forms
@@ -41,7 +43,10 @@ def render_portfolio_layout(
         ui_text.DATA_ENTRY, ui_text.PORTFOLIO_OVERVIEW,
     ])
     with entry_tab:
-        render_account_forms(PortfolioActions(store))
+        precious_metal_pricing = PreciousMetalPricing(
+            GoldApiSpotPriceProvider(), FrankfurterExchangeRateProvider(), store,
+        )
+        render_account_forms(PortfolioActions(store), precious_metal_pricing=precious_metal_pricing)
     portfolio = store.portfolio(selection.as_of, selection.currency)
     with overview_tab:
         portfolio = render_live_overview(store, portfolio)

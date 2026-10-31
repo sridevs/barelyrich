@@ -1,11 +1,8 @@
 
-import errno
 import json
-import socket
-import ssl
 from datetime import date
 from decimal import Decimal, localcontext
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -13,34 +10,11 @@ from src import config
 from src.log_messages import error as error_messages
 from src.models.portfolio.exchange_rate_observation import ExchangeRateObservation
 from src.models.portfolio.validation import currency_code, observation_date
+from src.providers.network import is_transient_network_error
 from src.retry import retry
 
 
-def _is_transient_network_error(error: Exception) -> bool:
-    if isinstance(error, HTTPError):
-        return _is_transient_http_error(error)
-    if isinstance(error, URLError):
-        return (
-            _is_transient_network_error(error.reason)
-            if isinstance(error.reason, Exception) else True
-        )
-    if isinstance(error, ssl.SSLError):
-        return False
-    if isinstance(error, socket.gaierror):
-        return error.errno == socket.EAI_AGAIN
-    return isinstance(error, (TimeoutError, ConnectionError)) or (
-        isinstance(error, OSError)
-        and error.errno in {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ETIMEDOUT}
-    )
-
-
-def _is_transient_http_error(error: HTTPError) -> bool:
-    transient = error.code in {408, 429, 500, 502, 503, 504}
-    error.close()
-    return transient
-
-
-@retry((URLError, OSError), should_retry=_is_transient_network_error)
+@retry((URLError, OSError), should_retry=is_transient_network_error)
 def _read_rate_response(request: Request) -> bytes:
     with urlopen(request, timeout=config.FX_TIMEOUT_SECONDS) as response:
         return response.read(config.MAX_FX_RESPONSE_BYTES + 1)
@@ -52,6 +26,10 @@ class ExchangeRateFetchError(ValueError):
 
 class FrankfurterExchangeRateProvider:
     """Fetch public daily reference rates, without sending account data."""
+
+    @property
+    def source(self) -> str:
+        return "frankfurter.dev"
 
     def fetch(
         self, currencies: set[str], as_of: date,

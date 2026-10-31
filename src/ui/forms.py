@@ -9,6 +9,7 @@ from src.inference.ollama_runtime import (
 )
 from src.service.entry_services import EntryServices
 from src.service.portfolio import PortfolioActions
+from src.service.precious_metals import PreciousMetalPricing
 from src.ui import ui_text
 from src.ui.state import StatementReviewSession
 from src.ui.statement_batch import StatementBatchSession
@@ -96,7 +97,11 @@ def _render_statement_inputs(
     return kind, uploads, debug
 
 
-def render_account_forms(actions: PortfolioActions, services: EntryServices | None = None) -> None:
+def render_account_forms(
+    actions: PortfolioActions,
+    services: EntryServices | None = None,
+    precious_metal_pricing: PreciousMetalPricing | None = None,
+) -> None:
     services = services or EntryServices()
     st.subheader(ui_text.DATA_ENTRY)
     selected = st.session_state.setdefault(_SELECTION_KEY, "Parse statement")
@@ -105,7 +110,7 @@ def render_account_forms(actions: PortfolioActions, services: EntryServices | No
         with column:
             _render_workflow_card(workflow, selected)
     if selected == "Manual valuation":
-        render_manual_valuation(actions)
+        render_manual_valuation(actions, precious_metal_pricing)
     else:
         render_statement_import(actions, services)
 

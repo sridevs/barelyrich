@@ -140,6 +140,12 @@ INVALID_OR_FUTURE_ISO_DATE = 'As-of date must be YYYY-MM-DD and cannot be in the
 DECIMAL_REQUIRED = '{label} must be a decimal number.'
 AS_OF_DATE_MUST_BE_YYYY_MM_DD = 'As-of date must be YYYY-MM-DD.'
 
+PRECIOUS_METAL_PRICE_FIELDS_REQUIRED = 'Precious metal, purity, unit and price source are required.'
+PRECIOUS_METAL_PRICE_MUST_BE_POSITIVE = 'Precious metal price must be positive.'
+PRECIOUS_METAL_PRICE_TIMEZONE_REQUIRED = 'Precious metal price observation time must include a timezone.'
+PRECIOUS_METAL_QUANTITY_MUST_BE_POSITIVE = 'Precious metal quantity must be positive.'
+PRECIOUS_METAL_PURITY_INVALID = 'Precious metal purities need unique labels and a fineness between 0 and 1.'
+
 # models / statements.
 STATEMENT_BALANCES_MUST_BE_VALIDATED_BALANCE_OBJECTS = 'Statement balances must be validated balance objects.'
 ACCOUNT_ALIAS_IS_REQUIRED = 'Account name is required.'
@@ -171,6 +177,9 @@ EXCHANGE_RATE_DATE_IS_LATER_THAN_THE_VALUATION_DATE = 'Exchange-rate date is lat
 FX_SERVICE_UNAVAILABLE = 'Automatic FX refresh failed: the exchange-rate service is unavailable.'
 FX_RESPONSE_INVALID = 'Automatic FX refresh failed: invalid or incomplete exchange-rate data.'
 UNEXPECTED_OR_DUPLICATE_EXCHANGE_RATE_CURRENCY = 'Unexpected or duplicate exchange-rate currency.'
+SPOT_PRICE_SERVICE_UNAVAILABLE = 'Live metal price service is unavailable.'
+SPOT_PRICE_RESPONSE_OVERSIZED = 'Live metal price service returned an oversized response.'
+SPOT_PRICE_RESPONSE_INVALID = 'Live metal price service returned invalid or stale data.'
 
 # repo.
 STATEMENT_EDIT_REQUIRED_FIELDS = "Every row requires a date, currency and balance."
@@ -190,6 +199,7 @@ SQL_RESOURCE_IS_EMPTY_SQL = 'SQL resource is empty: {name}.sql'
 SQL_RESOURCE_NOT_FOUND_SQL = 'SQL resource not found: {name}.sql'
 
 # service.
+SPOT_PRICE_REQUIRES_INR_RATE = 'A current INR exchange rate is required to value the metal.'
 HISTORICAL_FX_REFRESH_RETURNED_INCOMPLETE_OR_FUTURE_RATES = 'Historical FX refresh returned incomplete or future rates.'
 STATEMENT_IMPORT_REQUIRES_STATEMENT_SOURCED_BALANCES = 'Statement import requires statement-sourced balances.'
 HISTORICAL_NET_WORTH_UNAVAILABLE = 'Net worth history is unavailable for {day}: missing balances or dated FX.'

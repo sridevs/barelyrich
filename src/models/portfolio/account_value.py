@@ -7,6 +7,7 @@ from decimal import Decimal
 from src import config
 from src.log_messages import error as error_messages
 from src.models.portfolio.institution import Institution
+from src.models.portfolio.precious_metal_holding import PreciousMetalHolding
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class AccountValue:
     account_type: str = "other"
     account_number: str | None = None
     product_type: str = ""
+    precious_metal: PreciousMetalHolding | None = None
 
     def institution_record(self) -> Institution:
         return Institution(

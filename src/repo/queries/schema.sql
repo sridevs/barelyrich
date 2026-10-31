@@ -37,6 +37,20 @@ CREATE TABLE IF NOT EXISTS asset_prices (
  price TEXT NOT NULL, quote_currency TEXT NOT NULL, source TEXT NOT NULL,
  fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(symbol,price_date,source)
 );
+CREATE TABLE IF NOT EXISTS precious_metal_prices (
+ id INTEGER PRIMARY KEY, metal TEXT NOT NULL, purity TEXT NOT NULL,
+ currency TEXT NOT NULL, unit TEXT NOT NULL, price TEXT NOT NULL,
+ observed_at TEXT NOT NULL, source TEXT NOT NULL,
+ fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE(metal,purity,currency,unit,observed_at,source)
+);
+CREATE INDEX IF NOT EXISTS idx_precious_metal_prices_observed
+ ON precious_metal_prices(metal,purity,currency,unit,observed_at);
+CREATE TABLE IF NOT EXISTS precious_metal_valuations (
+ transaction_id INTEGER PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+ price_id INTEGER NOT NULL REFERENCES precious_metal_prices(id),
+ quantity TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS historical_fx_requests (
  currency TEXT NOT NULL, requested_date TEXT NOT NULL, rate_date TEXT NOT NULL,
  PRIMARY KEY(currency,requested_date)

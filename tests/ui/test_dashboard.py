@@ -1,7 +1,7 @@
 import json
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from threading import Event
@@ -29,10 +29,12 @@ from src.models.statements.statement_account import StatementAccount
 from src.models.statements.statement_balance import StatementBalance
 from src.models.statements.statement_extraction import StatementExtraction
 from src.models.statements.statement_institution import StatementInstitution
+from src.models.dto.spot_quote import SpotQuote
 from src.providers.exchange_rates import (
     ExchangeRateFetchError,
     FrankfurterExchangeRateProvider,
 )
+from src.providers.spot_prices import GoldApiSpotPriceProvider, SpotPriceFetchError
 from src.readers.statement_pdf import (
     IncorrectStatementPasswordError,
     StatementPasswordRequiredError,
@@ -41,6 +43,7 @@ from src.readers.statement_pdf import (
 from src.repo.portfolio import PortfolioStore
 from src.service.entry_services import EntryServices
 from src.service.portfolio import PortfolioActions
+from src.service.precious_metals import TROY_OUNCE_GRAMS
 from src.ui.statement_edit import _pending_rows
 from tests.statement_fixtures import statement_extraction
 
@@ -1068,6 +1071,51 @@ def test_manual_assets_debts_fx_replacement_and_history(tmp_path):
     assert restarted.metric[0].value == "6,000.00"
     by_label(restarted.sidebar.selectbox, "Display currency").set_value("SGD").run()
     assert restarted.metric[0].value == "100.00"
+
+
+def stub_spot_price(monkeypatch, outcome):
+    def fetch(provider, symbol):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(GoldApiSpotPriceProvider, "fetch", fetch)
+
+
+def open_metal_entry(app):
+    by_label(app.button, "Manual valuation").click().run()
+    by_label(app.segmented_control, "Manual entry type").set_value("Precious metal").run()
+
+
+def test_gold_entry_values_grams_at_live_rate_and_saves_holding(tmp_path, monkeypatch):
+    stub_spot_price(monkeypatch, SpotQuote(
+        "XAU", "USD", TROY_OUNCE_GRAMS * 100, datetime.now(timezone.utc),
+    ))
+    app = start_app()
+    open_metal_entry(app)
+    by_label(app.segmented_control, "Purity").set_value("22K").run()
+    by_label(app.number_input, "Weight (grams)").set_value(10.5).run()
+    assert not app.exception
+    assert by_label(app.metric, "Indicative live rate").value == "INR 5,500.00 / gram"
+    assert by_label(app.metric, "Estimated value").value == "INR 57,750.00"
+    by_label(app.button, "Save holding").click().run()
+    assert not app.exception
+    holding = app_store(tmp_path).portfolio(date.today(), "INR").accounts[0]
+    assert (holding.institution_name, holding.account, holding.balance) == (
+        "Precious metals", "Gold", Decimal("57750.00"),
+    )
+    assert holding.precious_metal.quantity == Decimal("10.500")
+    assert holding.precious_metal.price.purity == "22K"
+
+
+def test_gold_price_failure_blocks_metal_save(tmp_path, monkeypatch):
+    stub_spot_price(monkeypatch, SpotPriceFetchError("Live metal price service is unavailable."))
+    app = start_app()
+    open_metal_entry(app)
+    assert not app.exception
+    assert any("No precious metal valuation was saved" in item.value for item in app.error)
+    assert not any(button.label == "Save holding" for button in app.button)
+    assert not saved_history(tmp_path)
 
 
 @pytest.mark.parametrize("amount,kind,message", [
