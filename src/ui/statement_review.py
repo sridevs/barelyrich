@@ -1,6 +1,7 @@
 """Account review widgets and save actions for a single extracted statement."""
 
 from dataclasses import dataclass
+from functools import partial
 
 import streamlit as st
 
@@ -8,11 +9,12 @@ from src.models.entry.statement_review import StatementReview
 from src.models.portfolio.validation import account_number, institution_name
 from src.models.statements.statement_account import StatementAccount
 from src.service.portfolio import PortfolioActions
-from src.ui.feedback import show_saved
 from src.ui import ui_text
+from src.ui.feedback import show_saved
 from src.ui.presentation import money
 from src.ui.state import StatementReviewSession
 from src.ui.statement_batch import StatementBatchSession
+from src.ui.statement_edit import render_account_editor, statement_row
 
 
 def render_statement_review(
@@ -70,15 +72,37 @@ class _AccountReviewCards:
     def render(self, index: int, account: StatementAccount) -> None:
         number = account_number(account.number)
         with st.container(border=True, gap="xsmall", key=f"statement_review_account_{index}"):
-            st.markdown(ui_text.account_heading(index, account.number))
-            st.caption(ui_text.statement_date(account.balances[0].as_of))
-            product_type = self._render_type(number)
-            alias = self._render_alias(number)
+            self._render_account_header(index, account, number)
+            self._render_editor(account, number, index)
+
+    def _render_account_header(
+        self, index: int, account: StatementAccount, number: str,
+    ) -> None:
+        st.markdown(ui_text.account_heading(index, account.number))
+        st.caption(ui_text.statement_dates(balance.as_of for balance in account.balances))
+        self._render_account_warnings(account, number)
+
+    def _render_account_warnings(self, account: StatementAccount, number: str) -> None:
+        if account.has_conflicting_summaries:
+            st.warning(ui_text.CONFLICTING_SUMMARIES)
+        if not account.account_type.strip():
+            st.warning(ui_text.MISSING_ACCOUNT_TYPE)
+
+    def _render_editor(self, account: StatementAccount, number: str, index: int) -> None:
+        product_type = self._render_type(number)
+        alias = self._render_alias(number)
+        editing = render_account_editor(account, self._session)
+        if not editing:
             _render_balances(account)
-            if self._session.is_account_saved(number):
-                st.caption(ui_text.SAVED)
-            else:
-                self._render_approval(number, product_type, alias, index)
+        self._render_saved_or_approval(number, product_type, alias, index)
+
+    def _render_saved_or_approval(
+        self, number: str, product_type: str, alias: str, index: int,
+    ) -> None:
+        if self._session.is_account_saved(number):
+            st.caption(ui_text.SAVED)
+        elif self._session.editing_account is None:
+            self._render_approval(number, product_type, alias, index)
 
     def _render_type(self, number: str) -> str:
         product_type = st.text_input(
@@ -145,32 +169,10 @@ class _AccountReviewCards:
 
 
 def _render_balances(account: StatementAccount) -> None:
-    st.table(
-        [
-            {ui_text.CURRENCY: balance.currency, ui_text.BALANCE: money(balance.balance, balance.currency)}
-            for balance in account.balances
-        ],
-        hide_index=True, hide_header=False, border="horizontal",
-        alt=ui_text.BALANCES_ALT,
-    )
-    for balance in account.balances:
-        for warning in balance.review_warnings():
-            st.warning(ui_text.currency_warning(balance.currency, warning))
-    _render_classifications(account)
+    rows = [statement_row(balance, partial(money, currency=balance.currency)) for balance in account.balances]
+    st.caption(ui_text.row_count(len(rows)))
+    if any(balance.is_transaction for balance in account.balances):
+        st.dataframe(rows, hide_index=True, width="stretch", alt=ui_text.BALANCES_ALT)
+    else:
+        st.table(rows, hide_index=True, hide_header=False, border="horizontal", alt=ui_text.BALANCES_ALT)
 
-
-def _render_classifications(account: StatementAccount) -> None:
-    with st.expander(ui_text.AI_INTERPRETATION):
-        st.table(
-            [
-                {
-                    ui_text.CURRENCY: balance.currency,
-                    ui_text.BALANCE_TYPE: balance.balance_role.replace("_", " "),
-                    ui_text.SCOPE: balance.account_scope.replace("_", " "),
-                    ui_text.DATE_TYPE: balance.date_role.replace("_", " "),
-                }
-                for balance in account.balances
-            ],
-            hide_index=True, hide_header=False, border="horizontal",
-            alt=ui_text.CLASSIFICATIONS_ALT,
-        )

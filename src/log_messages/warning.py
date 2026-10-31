@@ -8,17 +8,10 @@ OUTPUT_RETRY = (
 VALIDATION_FAILED = "Statement validation failed: %s"
 FINANCIAL_CORRECTION = "Statement financial correction: %s"
 OPERATION_RETRY = "%s failed with %s; retrying attempt %d/%d in %.1fs."
-
-# Review diagnostics are returned to the UI, not automatically logged.
-BALANCE_ROLE_REVIEW = (
-    "AI classified this amount as {role}; "
-    "verify that it is the balance you intend to track."
+TARGETED_VALIDATION_FAILURE = "Statement validation rejected output: %s"
+TARGETED_VALIDATION_OUTPUT = "SENSITIVE: Rejected statement/correction output (logging enabled): %s"
+FIELD_REPAIR_FAILED = (
+    "Targeted field correction failed full validation. No partial statement was accepted. "
+    "Check the source document and retry extraction."
 )
-ACCOUNT_SCOPE_REVIEW = (
-    "AI did not identify this as a single-account balance. "
-    "Check for aggregate totals and double-counting before confirming."
-)
-DATE_ROLE_REVIEW = (
-    "AI classified the date as {role}; "
-    "verify the observation date before confirming."
-)
+CONFLICTING_STATEMENT_ACCOUNT_TYPES = "Currency sections for the same account have conflicting account types."

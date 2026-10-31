@@ -4,15 +4,14 @@ import base64
 import getpass
 import hashlib
 import os
-from pathlib import Path
 import sqlite3
+from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 from src.log_messages import error as error_messages
 from src.repo.queries import load_query
-
 
 MAGIC = b"WTRACKER1"
 SALT_BYTES = 16

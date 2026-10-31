@@ -1,39 +1,34 @@
 """Session-scoped navigation and outcomes for independently reviewed statements."""
 
-from src.log_messages import error as error_messages
-from src.ui.models.statement_batch_item import StatementBatchItem
-from collections.abc import Callable, MutableMapping, Sequence
-from dataclasses import replace
 import hashlib
+from collections.abc import Sequence
+from dataclasses import replace
 from typing import cast
 
+from src.log_messages import error as error_messages
 from src.models.entry.statement_review import StatementReview
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
+from src.ui.dto.statement_batch_item import StatementBatchItem
+from src.ui.session_scope import SessionScope
 from src.ui.state import StatementReviewSession
 
 
-class StatementBatchSession:
-    def __init__(self, state: MutableMapping[str, object], key: Callable[[str], str] = str):
-        self._state = state
-        self._key = key
-
+class StatementBatchSession(SessionScope):
     @property
     def items(self) -> tuple[StatementBatchItem, ...]:
-        return cast(tuple[StatementBatchItem, ...], self._state.get(self._key("statement_batch"), ()))
+        return cast(tuple[StatementBatchItem, ...], self._get("statement_batch", ()))
 
     @property
     def index(self) -> int:
-        return cast(int, self._state.get(self._key("statement_batch_index"), 0))
+        return cast(int, self._get("statement_batch_index", 0))
 
     def matches(self, files: Sequence[tuple[str, bytes]], kind: str) -> bool:
-        return self._state.get(self._key("statement_batch_signature")) == self._signature(files, kind)
+        return self._get("statement_batch_signature") == self._signature(files, kind)
 
     def begin(self, files: Sequence[tuple[str, bytes]], kind: str) -> None:
         self.clear()
-        self._state[self._key("statement_batch_signature")] = self._signature(files, kind)
-        self._state[self._key("statement_batch")] = tuple(
-            StatementBatchItem(name) for name, _ in files
-        )
+        self._set("statement_batch_signature", self._signature(files, kind))
+        self._set("statement_batch", tuple(StatementBatchItem(name) for name, _ in files))
 
     def review_session(self, index: int) -> StatementReviewSession:
         revision = StatementReviewSession(self._state, self._key).upload_revision
@@ -41,12 +36,17 @@ class StatementBatchSession:
         return StatementReviewSession(self._state, lambda name: self._key(prefix + name))
 
     def move(self, offset: int) -> None:
-        self._state[self._key("statement_batch_index")] = max(
-            0, min(len(self.items) - 1, self.index + offset),
-        )
+        self._set("statement_batch_index", max(0, min(len(self.items) - 1, self.index + offset)))
 
     def fail(self, index: int, error: str) -> None:
         self._replace(index, replace(self.items[index], error=error))
+
+    def cancel_extraction(self, message: str) -> None:
+        for index, item in enumerate(self.items):
+            if not item.saved and not item.error and self.review_session(index).preview is None:
+                self._replace(index, replace(
+                    item, error=message, password_required=False, password_error="",
+                ))
 
     def require_password(self, index: int) -> None:
         self._replace(index, replace(self.items[index], password_required=True))
@@ -107,7 +107,7 @@ class StatementBatchSession:
         ]
 
     def confirmation_key(self, snapshots: list[BalanceSnapshot]) -> str:
-        signature = repr((self._state.get(self._key("statement_batch_signature")), snapshots))
+        signature = repr((self._get("statement_batch_signature"), snapshots))
         digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()
         return self._key(f"statement_batch_confirmation_{digest}")
 
@@ -122,16 +122,12 @@ class StatementBatchSession:
     def clear(self) -> None:
         for index in range(len(self.items)):
             self.review_session(index).clear()
-        for state_key in list(self._state):
-            if state_key.startswith(self._key("statement_batch_confirmation_")):
-                self._state.pop(state_key, None)
-        for suffix in ("statement_batch", "statement_batch_index", "statement_batch_signature"):
-            self._state.pop(self._key(suffix), None)
+        self._drop_prefixed("statement_batch", "statement_password")
 
     def _replace(self, index: int, item: StatementBatchItem) -> None:
         items = list(self.items)
         items[index] = item
-        self._state[self._key("statement_batch")] = tuple(items)
+        self._set("statement_batch", tuple(items))
 
     @staticmethod
     def _signature(

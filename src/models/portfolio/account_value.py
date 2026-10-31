@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from src.log_messages import error as error_messages
+
 from src import config
+from src.log_messages import error as error_messages
 from src.models.portfolio.institution import Institution
 
 

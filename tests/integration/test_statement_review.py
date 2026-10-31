@@ -1,26 +1,18 @@
-"""Balance-only review persistence, atomic replacement and legacy data compatibility."""
+"""Statement review persistence and atomic replacement."""
 
+import sqlite3
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
-import sqlite3
 from unittest.mock import create_autospec
 
 import pytest
 
-from tests.statement_fixtures import statement_extraction
 from src.models.entry.statement_review import StatementReview
-from src.repo.contracts import BalanceWriter
-from src.repo.db import database_session, initialise
+from src.repo.db import database_session
 from src.repo.portfolio import PortfolioStore
 from src.service.portfolio import PortfolioActions
-
-
-@pytest.fixture
-def store(tmp_path):
-    path = tmp_path / "portfolio.sqlite3"
-    initialise(path)
-    return PortfolioStore(path)
+from tests.statement_fixtures import statement_extraction
 
 
 def review():
@@ -30,7 +22,7 @@ def review():
 
 
 def test_review_save_returns_balance_count_and_delegates_to_atomic_writer():
-    writer = create_autospec(BalanceWriter, instance=True)
+    writer = create_autospec(PortfolioStore, instance=True)
     writer.save_statement.return_value = 1
     preview = review()
     assert PortfolioActions(writer).save_statement_review(preview, "Savings", "DBS") == 1
@@ -69,7 +61,7 @@ def test_failed_second_balance_rolls_back_replacement_alias_and_first_insert(sto
     ))
     with database_session(store.path) as conn:
         conn.execute(
-            "CREATE TRIGGER reject_usd BEFORE INSERT ON account_balances "
+            "CREATE TRIGGER reject_usd BEFORE INSERT ON transactions "
             "WHEN (SELECT currency FROM accounts WHERE id = NEW.account_id) = 'USD' "
             "BEGIN SELECT RAISE(ABORT, 'second balance failed'); END"
         )
@@ -77,30 +69,3 @@ def test_failed_second_balance_rolls_back_replacement_alias_and_first_insert(sto
         store.save_statement(changed, "Changed alias", "DBS")
     assert store.balance_history(date.today()) == old_balances
     assert store.portfolio(date.today(), "SGD").accounts[0].account == "Savings SGD"
-
-
-def test_initialise_and_balance_reimport_leave_legacy_transaction_records_untouched(store):
-    preview = review()
-    store.save_statement(preview, "Savings", "DBS")
-    with database_session(store.path) as conn:
-        account_id = conn.execute("SELECT id FROM accounts").fetchone()[0]
-        conn.execute(
-            "INSERT INTO transactions(account_id,transaction_date,transaction_type,amount,currency) "
-            "VALUES (?, '2026-01-01', 'deposit', '7.50', 'SGD')", (account_id,),
-        )
-        conn.execute(
-            "INSERT INTO statement_transactions(account_id,source_file_hash,row_number,"
-            "transaction_date,description,amount,currency,direction,page_number,quote) "
-            "VALUES (?, 'legacy', 1, '2026-01-01', 'Legacy record', '2.50', 'SGD',"
-            "'debit', 1, 'Legacy record')", (account_id,),
-        )
-        legacy = {
-            table: [tuple(row) for row in conn.execute(f"SELECT * FROM {table}")]
-            for table in ("transactions", "statement_transactions")
-        }
-    initialise(store.path)
-    initialise(store.path)
-    store.save_statement(preview, "Renamed", "DBS")
-    with database_session(store.path) as conn:
-        for table, previous in legacy.items():
-            assert [tuple(row) for row in conn.execute(f"SELECT * FROM {table}")] == previous

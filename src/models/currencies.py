@@ -2,8 +2,8 @@
 
 
 import pycountry
-from src.log_messages import error as error_messages
 
+from src.log_messages import error as error_messages
 
 ISO_CURRENCY_CODES = tuple(sorted(currency.alpha_3 for currency in pycountry.currencies))
 ISO_CURRENCY_REFERENCE = "; ".join(

@@ -6,9 +6,7 @@ import pytest
 
 from src.models.portfolio.account_value import AccountValue
 from src.models.portfolio.portfolio import Portfolio
-from src.models.portfolio.portfolio_summary import PortfolioSummary
-from src.ui.presentation import money, PortfolioPresenter
-
+from src.ui.presentation import PortfolioPresenter, money
 
 DAY = date(2026, 1, 10)
 
@@ -87,7 +85,7 @@ def test_summary_subtracts_liabilities_and_preserves_negative_asset_equity():
                 balance=Decimal("500"), rate=Decimal(1), kind="liability"),
     )
     portfolio = Portfolio(rows, "INR", DAY)
-    summary = PortfolioSummary.from_portfolio(portfolio)
+    summary = portfolio.summarize()
     assert summary.assets == Decimal("5400")
     assert summary.liabilities == Decimal("500")
     assert summary.assets - summary.liabilities == portfolio.net_worth
@@ -99,7 +97,7 @@ def test_summary_subtracts_liabilities_and_preserves_negative_asset_equity():
 @pytest.mark.parametrize("rows", [(), (account(rate=None, rate_date=None),)])
 def test_incomplete_summary_is_never_success_shaped(rows: tuple[AccountValue, ...]):
     with pytest.raises(ValueError):
-        PortfolioSummary.from_portfolio(Portfolio(rows, "INR", DAY))
+        Portfolio(rows, "INR", DAY).summarize()
 
 
 def test_real_rows_keep_provenance_and_missing_conversion_visible():

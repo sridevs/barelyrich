@@ -1,4 +1,3 @@
-from src.ui.models.valuation_selection import ValuationSelection
 from datetime import date
 from decimal import Decimal
 
@@ -6,11 +5,12 @@ import pandas as pd
 import streamlit as st
 
 from src import config
+from src.models.dto.history_point import HistoryPoint
 from src.models.portfolio.portfolio import Portfolio
-from src.models.history.history_point import HistoryPoint
-from src.ui.presentation import money, PortfolioPresenter
-from src.ui.history_chart import build_history_chart
 from src.ui import ui_text
+from src.ui.dto.valuation_selection import ValuationSelection
+from src.ui.history_chart import build_history_chart
+from src.ui.presentation import PortfolioPresenter, money
 
 
 def render_valuation_selection() -> ValuationSelection | None:
@@ -65,7 +65,9 @@ def render_recorded_wealth(presenter: PortfolioPresenter) -> None:
         return
     render_wealth_summary(presenter.portfolio)
     render_staleness(presenter)
-    st.dataframe(pd.DataFrame(presenter.account_rows()), hide_index=True, width="stretch")
+    rows = presenter.account_rows()
+    st.caption(ui_text.row_count(len(rows)))
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
 
 def render_balance_history(rows: list[dict[str, str]]) -> None:
@@ -75,6 +77,7 @@ def render_balance_history(rows: list[dict[str, str]]) -> None:
             if row["currency"] == "INR" else row
             for row in rows
         ]
+        st.caption(ui_text.row_count(len(displayed_rows)))
         st.dataframe(pd.DataFrame(displayed_rows), hide_index=True, width="stretch")
 
 

@@ -1,26 +1,34 @@
-"""PydanticAI adapter for local text and vision inference."""
+"""PydanticAI adapter for local text inference."""
 
 import asyncio
 import json
 import logging
-from typing import Protocol
 
 from pydantic_ai import ModelRetry
 from pydantic_ai.messages import (
-    ModelMessage, ModelRequest, ModelResponse, RetryPromptPart, TextPart,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    TextPart,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.settings import ModelSettings
 
-from src.log_messages import error, info, warning
+from src.agents.field_repair import FieldRepairInference
 from src.agents.response import (
-    STATEMENT_RESPONSE_SCHEMA, MissingStatementData, StatementParsingError, StatementResponseParser,
+    STATEMENT_RESPONSE_SCHEMA,
+    MissingStatementData,
+    StatementParsingError,
+    StatementResponseParser,
 )
 from src.agents.statement_prompt import OUTPUT_RETRY_INSTRUCTIONS
+from src.inference.ollama_runtime import OllamaRuntime
+from src.inference.progress import report_stage
+from src.log_messages import error, info, warning
 from src.models.statements.statement_document import StatementDocument
 from src.models.text import is_missing_text
-
 
 LOGGER = logging.getLogger(__name__)
 _OUTPUT_FIELDS = frozenset(STATEMENT_RESPONSE_SCHEMA["properties"]) | frozenset(
@@ -30,13 +38,12 @@ _OUTPUT_FIELDS = frozenset(STATEMENT_RESPONSE_SCHEMA["properties"]) | frozenset(
 )
 
 
-class StatementInference(Protocol):
-    def generate(self, document: StatementDocument, prompt: str) -> str: ...
+StatementRuntime = OllamaRuntime | FieldRepairInference
 
 
 class LocalStatementModel(Model):
     def __init__(
-        self, runtime: StatementInference, document: StatementDocument, prompt: str,
+        self, runtime: StatementRuntime, document: StatementDocument, prompt: str,
         *, log_model_output: bool = False,
     ):
         super().__init__(profile=ModelProfile(
@@ -57,11 +64,11 @@ class LocalStatementModel(Model):
 
     @property
     def model_name(self) -> str:
-        return "local-statement-transformers"
+        return "local-statement-ollama"
 
     @property
     def system(self) -> str:
-        return "transformers"
+        return "ollama"
 
     async def request(
         self, messages: list[ModelMessage], model_settings: ModelSettings | None,
@@ -71,6 +78,7 @@ class LocalStatementModel(Model):
         self._require_text_output(model_request_parameters)
         prompt = self._build_prompt(messages, model_request_parameters.prompted_output_instructions)
         response = await self._generate(prompt)
+        report_stage("Validating model output")
         self._log_response(response)
         self._validate_response(response)
         return ModelResponse(
@@ -91,12 +99,11 @@ class LocalStatementModel(Model):
 
     async def _generate(self, prompt: str) -> str:
         self._attempt += 1
-        phase = "text model" if self._document.text_only else "vision model"
+        phase = "text model"
+        report_stage(f"{phase.capitalize()}: attempt {self._attempt}")
         LOGGER.info(info.GENERATION_STARTED, phase, self._attempt)
         response = await asyncio.to_thread(self._runtime.generate, self._document, prompt)
-        LOGGER.info(
-            info.OUTPUT_VALIDATION, phase, self._attempt,
-        )
+        LOGGER.info(info.OUTPUT_VALIDATION, phase, self._attempt)
         return response
 
     def _log_response(self, response: str) -> None:
@@ -132,14 +139,13 @@ class LocalStatementModel(Model):
         return OUTPUT_RETRY_INSTRUCTIONS + retry.model_response()
 
     def _validate_response(self, response: str) -> None:
-        if self._document.text_only and is_missing_text(response):
+        if is_missing_text(response):
             raise MissingStatementData(error.NO_STATEMENT)
         try:
             StatementResponseParser.require_bounded_response(response)
         except StatementParsingError as parsing_error:
             raise ModelRetry(str(parsing_error)) from None
-        if self._document.text_only:
-            StatementResponseParser.require_present_fields(response)
+        StatementResponseParser.require_present_fields(response)
 
 
 def _safe_retry_errors(retry: RetryPromptPart) -> str:

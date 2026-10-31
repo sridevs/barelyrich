@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+
 from src.log_messages import error as error_messages
-from src.models.portfolio.validation import currency_code
-from src.models.portfolio.validation import decimal_value
-from src.models.portfolio.validation import observation_date
+from src.models.portfolio.validation import (
+    currency_code,
+    decimal_value,
+    observation_date,
+)
 
 
 @dataclass(frozen=True)

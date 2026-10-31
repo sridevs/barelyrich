@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-
 from datetime import date
+
 from src.log_messages import error as error_messages
 
 

@@ -1,26 +1,27 @@
-"""Validated settings for local text and vision inference."""
-
+"""Validated settings for local Ollama inference."""
 
 import os
-from typing import Literal
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.log_messages import error as error_messages
 from src import config
-from src.config import DEFAULT_TRANSFORMERS_MODEL
+from src.log_messages import error as error_messages
 
 
-class TransformersRuntimeConfig(BaseModel):
+def _environment_int(name: str, default: int) -> int:
+    return int(os.environ.get(name, str(default)))
+
+
+class OllamaRuntimeConfig(BaseModel):
+    """Ollama model tag, context window and generation limits."""
+
     model_config = ConfigDict(strict=True, frozen=True, extra="forbid", validate_default=True)
 
-    model_name: str = Field(default=DEFAULT_TRANSFORMERS_MODEL, min_length=1, max_length=300)
-    model_kind: Literal["vision", "text"] = "vision"
-    device: Literal["auto", "cpu", "mps", "cuda"] = config.DEFAULT_TRANSFORMERS_DEVICE
+    model_name: str = Field(default=config.DEFAULT_OLLAMA_MODEL, min_length=1, max_length=300)
+    context_tokens: int = Field(default=config.DEFAULT_OLLAMA_CONTEXT_TOKENS, ge=1, le=131072)
     max_new_tokens: int = Field(default=config.DEFAULT_MAX_NEW_TOKENS, ge=1, le=32768)
-    max_input_tokens: int = Field(default=config.DEFAULT_MAX_INPUT_TOKENS, ge=1, le=131072)
-    max_image_pixels: int = Field(default=config.DEFAULT_MAX_IMAGE_PIXELS, ge=1, le=4_000_000)
-    max_time_seconds: int = Field(default=config.DEFAULT_MAX_TIME_SECONDS, ge=1, le=180)
+    max_time_seconds: int = Field(default=config.DEFAULT_MAX_TIME_SECONDS, ge=1)
 
     @field_validator("model_name")
     @classmethod
@@ -30,20 +31,10 @@ class TransformersRuntimeConfig(BaseModel):
         return value
 
     @classmethod
-    def from_environment(
-        cls, *, model_name: str | None = None, model_kind: Literal["vision", "text"] = "vision",
-    ) -> "TransformersRuntimeConfig":
+    def from_environment(cls, *, model_name: str | None = None) -> Self:
         return cls(
-            model_name=(
-                os.environ.get(
-                    "WT_TEXT_MODEL" if model_kind == "text" else "WT_TRANSFORMERS_MODEL",
-                    config.DEFAULT_TEXT_MODEL if model_kind == "text" else DEFAULT_TRANSFORMERS_MODEL,
-                )
-                if model_name is None else model_name
-            ),
-            model_kind=model_kind,
-            device=os.environ.get("WT_TRANSFORMERS_DEVICE", config.DEFAULT_TRANSFORMERS_DEVICE).lower(),
-            max_new_tokens=int(os.environ.get(
-                "WT_TRANSFORMERS_MAX_NEW_TOKENS", str(config.DEFAULT_MAX_NEW_TOKENS),
-            )),
+            model_name=model_name or os.environ.get("WT_OLLAMA_MODEL", config.DEFAULT_OLLAMA_MODEL),
+            context_tokens=_environment_int("WT_OLLAMA_CONTEXT_TOKENS", config.DEFAULT_OLLAMA_CONTEXT_TOKENS),
+            max_new_tokens=_environment_int("WT_OLLAMA_MAX_NEW_TOKENS", config.DEFAULT_MAX_NEW_TOKENS),
+            max_time_seconds=_environment_int("WT_OLLAMA_MAX_TIME_SECONDS", config.DEFAULT_MAX_TIME_SECONDS),
         )

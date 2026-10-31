@@ -1,22 +1,15 @@
-
-from datetime import date
-from typing import Protocol
-
 from src.log_messages import error as error_messages
 from src.models.portfolio.exchange_rate_observation import ExchangeRateObservation
 from src.models.portfolio.portfolio import Portfolio
-from src.providers.exchange_rates import ExchangeRateFetchError
-from src.repo.contracts import ExchangeRateWriter
-
-
-class ExchangeRateProvider(Protocol):
-    def fetch(
-        self, currencies: set[str], as_of: date,
-    ) -> tuple[ExchangeRateObservation, ...]: ...
+from src.providers.exchange_rates import (
+    ExchangeRateFetchError,
+    FrankfurterExchangeRateProvider,
+)
+from src.repo.portfolio import PortfolioStore
 
 
 class ExchangeRateRefresh:
-    def __init__(self, provider: ExchangeRateProvider, writer: ExchangeRateWriter):
+    def __init__(self, provider: FrankfurterExchangeRateProvider, writer: PortfolioStore):
         self._provider = provider
         self._writer = writer
 

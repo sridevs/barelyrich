@@ -5,9 +5,9 @@ from datetime import date
 import altair as alt
 import pandas as pd
 
-from src.models.history.history_point import HistoryPoint
-from src.ui.presentation import money
+from src.models.dto.history_point import HistoryPoint
 from src.ui import ui_text
+from src.ui.presentation import money
 
 
 def build_history_chart(

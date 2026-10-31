@@ -3,7 +3,6 @@ from decimal import Decimal
 
 from src.models.portfolio.exchange_rates import ExchangeRates
 
-
 DAY = date(2026, 1, 10)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from src.models.portfolio.validation import institution_name
 
 

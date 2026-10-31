@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.models.history.history_point import HistoryPoint
+from src.models.dto.history_point import HistoryPoint
 from src.ui.sections import render_net_worth_history
 
 

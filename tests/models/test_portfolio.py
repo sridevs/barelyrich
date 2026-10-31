@@ -10,7 +10,6 @@ from src.models.portfolio.exchange_rate_observation import ExchangeRateObservati
 from src.models.portfolio.institution import Institution
 from src.models.portfolio.portfolio import Portfolio
 
-
 DAY = date(2026, 1, 10)
 
 
@@ -59,10 +58,12 @@ def test_missing_conversion_is_not_a_zero_valuation():
 def test_account_owns_balance_and_fx_staleness_rules():
     value = account()
     assert not value.is_stale(DAY + timedelta(days=7))
-    assert value.is_stale(DAY + timedelta(days=8))
-    assert value.has_stale_fx("INR", DAY + timedelta(days=8))
+    assert value.is_stale(DAY + timedelta(days=8), days=7)
+    assert value.has_stale_fx("INR", DAY + timedelta(days=8), days=7)
     assert not value.has_stale_fx("SGD", DAY + timedelta(days=8))
-    assert not replace(value, rate_date=None).has_stale_fx("INR", DAY + timedelta(days=8))
+    assert not replace(value, rate_date=None).has_stale_fx(
+        "INR", DAY + timedelta(days=8), days=7,
+    )
     assert not value.is_stale(DAY + timedelta(days=8), days=8)
 
 
@@ -81,8 +82,8 @@ def test_portfolio_owns_grouping_staleness_and_summary():
     portfolio = Portfolio((stale, loan), "INR", DAY)
     assert portfolio.accounts_for(Institution("dbs_sg", "DBS")) == (stale,)
     assert portfolio.accounts_for(Institution("uob_sg", "UOB")) == ()
-    assert portfolio.stale_accounts() == (stale,)
-    assert portfolio.stale_currencies() == ("SGD",)
+    assert portfolio.stale_accounts(days=7) == (stale,)
+    assert portfolio.stale_currencies(days=7) == ("SGD",)
     summary = portfolio.summarize()
     assert summary.net_worth == portfolio.net_worth == Decimal(5500)
     assert summary.total_for("kotak_in") == Decimal(-500)

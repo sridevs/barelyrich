@@ -1,16 +1,15 @@
 """Bounded retries for synchronous operations with caller-defined transient errors."""
 
 
+import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-import logging
-import time
 from typing import ParamSpec, TypeVar
 
 from src.log_messages import error as error_messages
 from src.log_messages import warning
-
 
 LOGGER = logging.getLogger(__name__)
 Parameters = ParamSpec("Parameters")

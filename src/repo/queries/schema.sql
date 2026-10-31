@@ -3,6 +3,13 @@ CREATE TABLE IF NOT EXISTS institutions (
  key TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL UNIQUE,
  country_code TEXT NOT NULL DEFAULT '', account_type TEXT NOT NULL DEFAULT 'other'
 );
+INSERT INTO institutions(key,name,normalized_name,country_code,account_type) VALUES
+('dbs_sg','DBS Singapore','dbs singapore','SG','bank'),
+('uob_sg','UOB Singapore','uob singapore','SG','bank'),
+('tiger_sg','Tiger Brokers Singapore','tiger brokers singapore','SG','brokerage'),
+('hdfc_in','HDFC Bank','hdfc bank','IN','bank'),
+('kotak_in','Kotak Mahindra Bank','kotak mahindra bank','IN','bank')
+ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS accounts (
  id INTEGER PRIMARY KEY, name TEXT NOT NULL, institution TEXT NOT NULL,
  country_code TEXT NOT NULL, account_type TEXT NOT NULL, currency TEXT NOT NULL,
@@ -10,17 +17,10 @@ CREATE TABLE IF NOT EXISTS accounts (
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, account_number TEXT,
  product_type TEXT NOT NULL DEFAULT ''
 );
--- Legacy transaction tables are inert compatibility storage; never delete saved records.
-CREATE TABLE IF NOT EXISTS transactions (
- id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id),
- transaction_date TEXT NOT NULL,
- transaction_type TEXT NOT NULL CHECK(transaction_type IN
- ('opening_balance','deposit','withdrawal','buy','sell','dividend','interest','fee',
- 'transfer_in','transfer_out','liability_increase','liability_payment','adjustment')),
- amount TEXT NOT NULL, currency TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
- external_id TEXT, transfer_group TEXT, source_file_hash TEXT,
- created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(account_id,external_id)
-);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_alias
+ ON accounts(institution,name) WHERE account_number IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_number
+ ON accounts(institution,account_number,currency) WHERE account_number IS NOT NULL;
 CREATE TABLE IF NOT EXISTS holdings (
  id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id),
  symbol TEXT NOT NULL, asset_name TEXT NOT NULL, quantity TEXT NOT NULL,
@@ -52,26 +52,15 @@ CREATE TABLE IF NOT EXISTS backup_history (
  backup_path_label TEXT NOT NULL, status TEXT NOT NULL, checksum_sha256 TEXT,
  notes TEXT NOT NULL DEFAULT ''
 );
-CREATE TABLE IF NOT EXISTS account_balances (
+CREATE TABLE IF NOT EXISTS transactions (
  id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id),
  as_of TEXT NOT NULL, balance TEXT NOT NULL,
  source TEXT NOT NULL CHECK(source IN ('manual','csv','statement','tiger_api')),
  recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- UNIQUE(account_id,as_of)
+ withdrawal TEXT, deposit TEXT, description TEXT NOT NULL DEFAULT '',
+ transaction_key TEXT NOT NULL DEFAULT '', row_number INTEGER NOT NULL DEFAULT 0,
+ UNIQUE(account_id,as_of,transaction_key)
 );
-CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(as_of);
 CREATE INDEX IF NOT EXISTS idx_fx_date ON exchange_rates(rate_date);
 CREATE INDEX IF NOT EXISTS idx_prices_symbol_date ON asset_prices(symbol,price_date);
--- Retained only for compatibility with databases from transaction-capture versions.
-CREATE TABLE IF NOT EXISTS statement_transactions (
- id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id),
- source_file_hash TEXT NOT NULL, row_number INTEGER NOT NULL CHECK(row_number > 0),
- transaction_date TEXT NOT NULL, posting_date TEXT, description TEXT NOT NULL,
- amount TEXT NOT NULL, currency TEXT NOT NULL,
- direction TEXT NOT NULL CHECK(direction IN ('debit','credit')),
- running_balance TEXT, reference TEXT, page_number INTEGER NOT NULL CHECK(page_number > 0),
- quote TEXT NOT NULL, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- UNIQUE(account_id,source_file_hash,row_number)
-);
-CREATE INDEX IF NOT EXISTS idx_statement_transactions_date
- ON statement_transactions(transaction_date);

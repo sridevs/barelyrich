@@ -3,20 +3,12 @@ from decimal import Decimal
 
 import pytest
 
-from src.repo.db import connect, initialise
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.models.portfolio.validation import decimal_value
+from src.repo.db import connect
 from src.repo.portfolio import PortfolioStore
 
-
 DAY = date(2026, 1, 1)
-
-
-@pytest.fixture
-def store(tmp_path):
-    path = tmp_path / "portfolio.sqlite3"
-    initialise(path)
-    return PortfolioStore(path)
 
 
 def snapshot(
@@ -92,7 +84,7 @@ def test_reimports_replace_observations_not_add_balances(store):
     store.save([snapshot(balance="101")])
     assert store.portfolio(DAY, "SGD").net_worth == Decimal(101)
     with connect(store.path) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM account_balances").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 1
 
 
 def test_batch_duplicate_rolls_back_all_changes(store):

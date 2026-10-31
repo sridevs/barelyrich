@@ -5,7 +5,6 @@ from src.models.portfolio.account_value import AccountValue
 from src.models.portfolio.portfolio import Portfolio
 from src.ui import ui_text
 
-
 TableRow = dict[str, object]
 
 
@@ -58,7 +57,7 @@ class PortfolioPresenter:
                 account.net_value, self._portfolio.base_currency,
             ),
         }
-        if account.account_number is not None:
+        if account.account_number:
             row[ui_text.ACCOUNT_NUMBER] = account.account_number
             row[ui_text.ACCOUNT_TYPE] = account.product_type
         row.update(self._provenance_row(account))

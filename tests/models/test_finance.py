@@ -1,5 +1,7 @@
 from decimal import Decimal
-from src.models.finance import convert, net_worth, apply_signed_events
+
+from src.models.finance import apply_signed_events, convert, net_worth
+
 
 def test_convert():
     assert convert("100","60.5") == Decimal("6050.0")

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-
-from dataclasses import dataclass, replace
 import hashlib
 import re
+from collections.abc import Callable
+from dataclasses import dataclass, replace
+
 from src.log_messages import error as error_messages
 from src.models.entry.validation import required_text
 from src.models.portfolio.balance_snapshot import BalanceSnapshot
 from src.models.portfolio.validation import account_number
+from src.models.statements.statement_account import StatementAccount
+from src.models.statements.statement_balance import StatementBalance
 from src.models.statements.statement_extraction import StatementExtraction
+from src.models.statements.statement_institution import StatementInstitution
 
 
 def _require_file_digest(value: str) -> None:
@@ -24,27 +28,41 @@ class StatementReview:
     kind: str
     extraction: StatementExtraction
 
+    @classmethod
+    def restore(cls, review: "StatementReview") -> "StatementReview":
+        extraction = StatementExtraction(
+            tuple(StatementAccount.with_balances(item, item.balances) for item in review.extraction.accounts),
+            review.extraction.institution,
+        )
+        return cls(review.file_digest, review.kind, extraction)
+
     def __post_init__(self):
         _require_file_digest(self.file_digest)
-        self.snapshots(self.suggested_aliases)
+        aliases = self.suggested_aliases
+        for account in self.extraction.accounts:
+            for row in account.balances:
+                row.to_snapshot(self.institution, aliases[account_number(account.number)], self.kind)
 
     @classmethod
     def create(cls, content: bytes, kind: str, extraction: StatementExtraction) -> "StatementReview":
         return cls(hashlib.sha256(content).hexdigest(), kind, extraction)
 
     @property
-    def institution(self) -> str:
-        identity = self.extraction.institution
-        if identity is None:
+    def _identity(self) -> StatementInstitution:
+        if self.extraction.institution is None:
             raise ValueError(error_messages.AI_COULD_NOT_IDENTIFY_THE_STATEMENT_INSTITUTION)
-        return identity.name
+        return self.extraction.institution
+
+    @property
+    def institution(self) -> str:
+        return self._identity.name
+
+    def _institution_named(self, institution: str | None) -> str:
+        return self.institution if institution is None else institution
 
     @property
     def suggested_alias(self) -> str:
-        identity = self.extraction.institution
-        if identity is None:
-            raise ValueError(error_messages.AI_COULD_NOT_IDENTIFY_THE_STATEMENT_INSTITUTION)
-        return identity.alias
+        return self._identity.alias
 
     @property
     def suggested_aliases(self) -> dict[str, str]:
@@ -68,17 +86,24 @@ class StatementReview:
         return self.file_digest == hashlib.sha256(content).hexdigest() and self.kind == kind
 
     def with_account_type(self, number: str, value: str) -> "StatementReview":
+        return self._with_account(number, lambda account: replace(account, account_type=value))
+
+    def with_account_balances(
+        self, number: str, balances: tuple[StatementBalance, ...],
+    ) -> "StatementReview":
+        return self._with_account(number, lambda account: account.with_balances(balances))
+
+    def _with_account(
+        self, number: str, change: Callable[[StatementAccount], StatementAccount],
+    ) -> "StatementReview":
         normalized = account_number(number)
         if normalized not in self.suggested_aliases:
             raise ValueError(error_messages.STATEMENT_ACCOUNT_WAS_NOT_FOUND_IN_THE_EXTRACTION)
-        return replace(self, extraction=replace(
-            self.extraction,
-            accounts=tuple(
-                replace(item, account_type=value) if account_number(item.number) == normalized
-                else item
-                for item in self.extraction.accounts
-            ),
-        ))
+        accounts = tuple(
+            change(item) if account_number(item.number) == normalized else item
+            for item in self.extraction.accounts
+        )
+        return replace(self, extraction=replace(self.extraction, accounts=accounts))
 
     def confirmation_key(
             self, alias: str | dict[str, str], institution: str | None = None,
@@ -94,25 +119,20 @@ class StatementReview:
     def snapshots(
             self, alias: str | dict[str, str], institution: str | None = None,
     ) -> list[BalanceSnapshot]:
-        name = self.institution if institution is None else institution
         if isinstance(alias, dict):
             return [
-                snapshot
-                for number, value in alias.items()
-                for snapshot in self.snapshots_for_account(number, value, name)
+                snapshot for number, value in alias.items()
+                for snapshot in self.snapshots_for_account(number, value, institution)
             ]
-        return self.extraction.to_snapshots(
-            name,
-            required_text(alias, "Statement account alias"),
-            self.kind,
-        )
+        return self.extraction.to_snapshots(self._institution_named(institution), _account_name(alias), self.kind)
 
     def snapshots_for_account(
             self, number: str, alias: str, institution: str | None = None,
     ) -> list[BalanceSnapshot]:
         return self.extraction.to_snapshots_for_account(
-            number,
-            self.institution if institution is None else institution,
-            required_text(alias, "Statement account alias"),
-            self.kind,
+            number, self._institution_named(institution), _account_name(alias), self.kind,
         )
+
+
+def _account_name(alias: str) -> str:
+    return required_text(alias, "Statement account name")
