@@ -21,23 +21,24 @@ _WEIGHT_PRECISION = Decimal("0.001")
 
 
 @st.cache_data(ttl=config.SPOT_PRICE_CACHE_SECONDS, show_spinner=False)
-def _current_prices(
-    _pricing: PreciousMetalPricing, metal_name: str, database: str,
+def _prices_on(
+    _pricing: PreciousMetalPricing, metal_name: str, as_of: date, database: str,
 ) -> tuple[PreciousMetalPrice, ...]:
     del database
-    return _pricing.current_prices(PRECIOUS_METALS[metal_name])
+    return _pricing.prices_on(PRECIOUS_METALS[metal_name], as_of)
 
 
 def render_precious_metal_valuation(
     actions: PortfolioActions, pricing: PreciousMetalPricing,
 ) -> None:
     metal, purity, weight = _render_holding_inputs()
-    price = _price(pricing, metal, purity)
+    as_of = _render_as_of()
+    price = _price(pricing, metal, purity, as_of)
     if price is None:
         return
     holding = PreciousMetalHolding(weight, price)
     _render_estimate(holding)
-    _render_save_form(actions, holding)
+    _render_save_form(actions, holding, as_of)
 
 
 def _render_holding_inputs() -> tuple[PreciousMetal, str, Decimal]:
@@ -55,11 +56,18 @@ def _render_holding_inputs() -> tuple[PreciousMetal, str, Decimal]:
     return metal, purity, Decimal(str(weight)).quantize(_WEIGHT_PRECISION)
 
 
+def _render_as_of() -> date:
+    return st.date_input(
+        ui_text.METAL_VALUE_AS_OF, value=date.today(), min_value=config.METAL_PRICE_HISTORY_START,
+        max_value=date.today(), help=ui_text.METAL_VALUE_AS_OF_HELP, key="metal_as_of",
+    )
+
+
 def _price(
-    pricing: PreciousMetalPricing, metal: PreciousMetal, purity: str,
+    pricing: PreciousMetalPricing, metal: PreciousMetal, purity: str, as_of: date,
 ) -> PreciousMetalPrice | None:
     try:
-        prices = _current_prices(pricing, metal.name, str(pricing.database_path))
+        prices = _prices_on(pricing, metal.name, as_of, str(pricing.database_path))
     except (SpotPriceFetchError, ExchangeRateFetchError) as error:
         st.error(ui_text.metal_price_error(error))
         return None
@@ -78,7 +86,9 @@ def _render_estimate(holding: PreciousMetalHolding) -> None:
     st.caption(ui_text.METAL_VALUATION_CAVEAT)
 
 
-def _render_save_form(actions: PortfolioActions, holding: PreciousMetalHolding) -> None:
+def _render_save_form(
+    actions: PortfolioActions, holding: PreciousMetalHolding, as_of: date,
+) -> None:
     with st.form("precious_metal_valuation"):
         name = st.text_input(
             ui_text.ASSET_NAME, value=holding.price.metal.capitalize(),
@@ -88,14 +98,12 @@ def _render_save_form(actions: PortfolioActions, holding: PreciousMetalHolding) 
             ui_text.SAVE_METAL_HOLDING, type="primary", key="save_metal_holding",
         )
     if save:
-        _save(actions, name, holding)
+        _save(actions, PreciousMetalValuation(ui_text.PRECIOUS_METALS_GROUP, name, holding, as_of))
 
 
-def _save(actions: PortfolioActions, name: str, holding: PreciousMetalHolding) -> None:
+def _save(actions: PortfolioActions, valuation: PreciousMetalValuation) -> None:
     try:
-        actions.save_precious_metal(PreciousMetalValuation(
-            ui_text.PRECIOUS_METALS_GROUP, name, holding, date.today(),
-        ))
+        actions.save_precious_metal(valuation)
     except ValueError as error:
         st.error(str(error))
     else:

@@ -5,6 +5,7 @@ own modules. In particular, stored FX observations remain INR-denominated.
 """
 
 import os
+from datetime import date
 from pathlib import Path
 
 PAGE_TITLE = "BarelyRich"
@@ -38,6 +39,8 @@ SPOT_PRICE_URL = "https://api.gold-api.com/price"
 SPOT_PRICE_TIMEOUT_SECONDS = 10
 MAX_SPOT_PRICE_RESPONSE_BYTES = 16_384
 SPOT_PRICE_CACHE_SECONDS = 60
+# First day Frankfurter publishes daily gold reference prices.
+METAL_PRICE_HISTORY_START = date(1999, 1, 5)
 
 
 def data_directory() -> Path:

@@ -8,6 +8,7 @@ from src.providers.exchange_rates import (
     ExchangeRateFetchError,
     FrankfurterExchangeRateProvider,
 )
+from src.providers.frankfurter_spot_prices import FrankfurterSpotPriceProvider
 from src.providers.spot_prices import GoldApiSpotPriceProvider
 from src.repo.portfolio import PortfolioStore
 from src.service.exchange_rates import ExchangeRateRefresh
@@ -44,7 +45,8 @@ def render_portfolio_layout(
     ])
     with entry_tab:
         precious_metal_pricing = PreciousMetalPricing(
-            GoldApiSpotPriceProvider(), FrankfurterExchangeRateProvider(), store,
+            GoldApiSpotPriceProvider(), FrankfurterSpotPriceProvider(),
+            FrankfurterExchangeRateProvider(), store,
         )
         render_account_forms(PortfolioActions(store), precious_metal_pricing=precious_metal_pricing)
     portfolio = store.portfolio(selection.as_of, selection.currency)

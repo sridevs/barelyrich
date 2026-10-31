@@ -199,7 +199,7 @@ SQL_RESOURCE_IS_EMPTY_SQL = 'SQL resource is empty: {name}.sql'
 SQL_RESOURCE_NOT_FOUND_SQL = 'SQL resource not found: {name}.sql'
 
 # service.
-SPOT_PRICE_REQUIRES_INR_RATE = 'A current INR exchange rate is required to value the metal.'
+SPOT_PRICE_REQUIRES_INR_RATE = 'An INR exchange rate for the valuation date is required to value the metal.'
 HISTORICAL_FX_REFRESH_RETURNED_INCOMPLETE_OR_FUTURE_RATES = 'Historical FX refresh returned incomplete or future rates.'
 STATEMENT_IMPORT_REQUIRES_STATEMENT_SOURCED_BALANCES = 'Statement import requires statement-sourced balances.'
 HISTORICAL_NET_WORTH_UNAVAILABLE = 'Net worth history is unavailable for {day}: missing balances or dated FX.'

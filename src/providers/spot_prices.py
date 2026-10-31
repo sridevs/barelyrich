@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Protocol
 from urllib.error import URLError
@@ -27,6 +27,15 @@ class SpotPriceProvider(Protocol):
     def source(self) -> str: ...
 
     def fetch(self, symbol: str) -> SpotQuote: ...
+
+
+class HistoricalSpotPriceProvider(Protocol):
+    """Source of daily reference prices for pure metals on a past date, per troy ounce."""
+
+    @property
+    def source(self) -> str: ...
+
+    def fetch_on(self, symbol: str, as_of: date) -> SpotQuote: ...
 
 
 @retry((URLError, OSError), should_retry=is_transient_network_error)

@@ -34,6 +34,7 @@ from src.providers.exchange_rates import (
     ExchangeRateFetchError,
     FrankfurterExchangeRateProvider,
 )
+from src.providers.frankfurter_spot_prices import FrankfurterSpotPriceProvider
 from src.providers.spot_prices import GoldApiSpotPriceProvider, SpotPriceFetchError
 from src.readers.statement_pdf import (
     IncorrectStatementPasswordError,
@@ -1096,7 +1097,7 @@ def test_gold_entry_values_grams_at_live_rate_and_saves_holding(tmp_path, monkey
     by_label(app.segmented_control, "Purity").set_value("22K").run()
     by_label(app.number_input, "Weight (grams)").set_value(10.5).run()
     assert not app.exception
-    assert by_label(app.metric, "Indicative live rate").value == "INR 5,500.00 / gram"
+    assert by_label(app.metric, "Indicative rate").value == "INR 5,500.00 / gram"
     assert by_label(app.metric, "Estimated value").value == "INR 57,750.00"
     by_label(app.button, "Save holding").click().run()
     assert not app.exception
@@ -1106,6 +1107,33 @@ def test_gold_entry_values_grams_at_live_rate_and_saves_holding(tmp_path, monkey
     )
     assert holding.precious_metal.quantity == Decimal("10.500")
     assert holding.precious_metal.price.purity == "22K"
+
+
+def test_back_dated_gold_uses_that_days_rate_and_appears_in_history(tmp_path, monkeypatch):
+    purchase_date = date.today() - timedelta(days=400)
+    requests = []
+
+    def fetch_on(provider, symbol, as_of):
+        requests.append((symbol, as_of))
+        published_at = datetime.combine(as_of, datetime.min.time(), timezone.utc)
+        return SpotQuote(symbol, "INR", TROY_OUNCE_GRAMS * 4800, published_at)
+
+    monkeypatch.setattr(FrankfurterSpotPriceProvider, "fetch_on", fetch_on)
+    stub_spot_price(monkeypatch, SpotQuote(
+        "XAU", "USD", TROY_OUNCE_GRAMS * 100, datetime.now(timezone.utc),
+    ))
+    app = start_app()
+    open_metal_entry(app)
+    by_label(app.number_input, "Weight (grams)").set_value(10.5).run()
+    by_label(app.date_input, "Bought or valued on").set_value(purchase_date).run()
+    assert not app.exception
+    assert by_label(app.metric, "Indicative rate").value == "INR 4,800.00 / gram"
+    by_label(app.button, "Save holding").click().run()
+    assert not app.exception
+    assert requests == [("XAU", purchase_date)]
+    holding = app_store(tmp_path).portfolio(purchase_date, "INR").accounts[0]
+    assert (holding.balance, holding.precious_metal.price.purity) == (Decimal("50400.00"), "24K")
+    assert [row["as_of"] for row in saved_history(tmp_path)] == [purchase_date.isoformat()]
 
 
 def test_gold_price_failure_blocks_metal_save(tmp_path, monkeypatch):

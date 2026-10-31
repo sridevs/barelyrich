@@ -59,8 +59,11 @@ Good to know:
 
 Use this for assets and debts without statements, such as property or loans.
 Enter the total value of your share. For gold, choose **Precious metal**, enter
-the weight in grams and select 22K or 24K. BarelyRich estimates the INR value
-from a live USD gold spot quote and the latest daily USD/INR reference rate.
+the weight in grams, select 22K or 24K and set the purchase or valuation date.
+For today, BarelyRich estimates the INR value from a live USD gold spot quote
+and the latest daily USD/INR reference rate. For a past date, it uses that
+day's gold reference rate from Frankfurter, so net worth history includes the
+holding from then. Save again with today's date to record its current value.
 The quote, rate source, time, purity and weight are saved with the valuation.
 The estimate excludes GST, making charges and jeweller premiums. Reusing the
 same name adds a dated update.

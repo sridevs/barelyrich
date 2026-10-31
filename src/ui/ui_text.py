@@ -108,7 +108,13 @@ PRECIOUS_METALS_GROUP = "Precious metals"
 METAL = "Metal"
 PURITY = "Purity"
 METAL_WEIGHT = "Weight (grams)"
-METAL_RATE = "Indicative live rate"
+METAL_RATE = "Indicative rate"
+METAL_VALUE_AS_OF = "Bought or valued on"
+METAL_VALUE_AS_OF_HELP = (
+    "Today uses the live rate. A past date, such as the purchase date, uses that day's "
+    "reference rate so net worth history includes the holding from then. Save again with "
+    "today's date to record its current value."
+)
 ESTIMATED_METAL_VALUE = "Estimated value"
 SAVE_METAL_HOLDING = "Save holding"
 METAL_VALUATION_CAVEAT = (
